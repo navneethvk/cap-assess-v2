@@ -1,0 +1,42 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // This function checks if a user has an 'admin' or 'editor' role.
+    function isEditor() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role in ['admin', 'editor'];
+    }
+
+    // Allow users to read their own profile, and admins to write to any profile.
+    match /users/{userId} {
+      allow read: if request.auth != null;
+      allow write: if request.auth.uid == userId || get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin';
+    }
+
+    // --- Corrected Data Collection Rules ---
+    match /care-standards/{docId} {
+       allow read, list, create, update, delete: if isEditor();
+    }
+
+    match /past-initiatives/{docId} {
+       allow read, list, create, update, delete: if isEditor();
+    }
+
+    match /budget-rate-card/{docId} {
+       allow read, list, create, update, delete: if isEditor();
+    }
+    // -------------------------------------
+
+    // Allow access to metadata ONLY for editors/admins.
+    match /csv_metadata/{docId} {
+       allow read, write: if isEditor();
+    }
+
+    // Allow anyone authenticated to create audit logs (e.g., for feedback),
+    // but only editors/admins can read the full history.
+    match /audit-trail/{docId} {
+       allow create: if request.auth != null;
+       allow read: if isEditor();
+    }
+  }
+}

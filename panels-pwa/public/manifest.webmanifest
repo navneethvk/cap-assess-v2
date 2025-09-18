@@ -1,0 +1,23 @@
+{
+  "name": "CCI Assessment",
+  "short_name": "CCI Assess",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#ff6f89",
+  "scope": "/",
+  "description": "CCI Assessment portal for visit tracking and reporting.",
+  "icons": [
+    { "src": "/pwa-192x192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "/pwa-512x512.png", "sizes": "512x512", "type": "image/png" },
+    { "src": "/pwa-512x512-maskable.svg", "sizes": "512x512", "type": "image/svg+xml", "purpose": "any maskable" }
+  ],
+  "shortcuts": [
+    {
+      "name": "Visits",
+      "short_name": "Visits",
+      "url": "/visits",
+      "description": "Jump straight to the visits dashboard"
+    }
+  ]
+}

@@ -1,0 +1,87 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Helper function to check if a user has a valid role and is not deactivated
+    function isAuthenticatedAndAuthorized() {
+      return request.auth != null &&
+             // Role claim optional; if present, must not be "Pending"
+             (request.auth.token.role == null || request.auth.token.role is string) &&
+             (request.auth.token.role == null || request.auth.token.role != "Pending") &&
+             // Status claim optional; if present, must not be "deactivated"
+             (request.auth.token.status == null || request.auth.token.status != "deactivated");
+    }
+
+    // Helper: normalized role (defaults to Visitor when not set)
+    function normalizedRole() {
+      return request.auth != null && request.auth.token.role is string
+             ? request.auth.token.role
+             : "Visitor";
+    }
+
+    // Helper function to check if user is admin
+    function isAdmin() {
+      return request.auth != null && request.auth.token.role == "Admin";
+    }
+
+    // Rule for the 'users' collection
+    match /users/{userId} {
+      // Users can read their own profile
+      allow read: if request.auth != null && request.auth.uid == userId;
+
+      // Admins can read any user's profile
+      allow read: if isAdmin();
+
+      // Users can update their own profile, but NOT change their role or status
+      allow update: if request.auth != null && request.auth.uid == userId && request.auth.token.role != "Pending" &&
+                    (!("role" in request.resource.data) || request.resource.data.role == resource.data.role) &&
+                    (!("status" in request.resource.data) || request.resource.data.status == resource.data.status);
+
+      // Admins can update any user's profile, including their role and status
+      allow update: if isAdmin();
+    }
+
+    // Rule for the 'ccis' collection
+    match /ccis/{cciId} {
+      // Any authenticated, authorized user may read CCIs (used by visit creation)
+      allow read: if isAuthenticatedAndAuthorized();
+      // Only admins may create/update/delete CCIs
+      allow create, update, delete: if isAdmin();
+    }
+
+    // Rule for the 'cci_user_links' collection
+    match /cci_user_links/{userId} {
+      // Admins can read and write to the cci_user_links collection
+      allow read, write, create, delete: if isAdmin();
+      
+      // Users can read their own assignments
+      allow read: if request.auth != null && request.auth.uid == userId && isAuthenticatedAndAuthorized();
+    }
+
+    // Rule for the 'visits' collection
+    match /visits/{visitId} {
+      // Create a visit you own. Keep checks minimal to avoid false negatives during prototyping,
+      // but still enforce ownership.
+      allow create: if request.auth != null
+                    && request.resource.data.filledByUid == request.auth.uid;
+
+      // Read own visits, or any visit if Admin
+      allow read: if isAdmin() || (request.auth != null && resource.data.filledByUid == request.auth.uid);
+
+      // Owner or admin may update their visit.
+      allow update: if isAdmin() || (request.auth != null && resource.data.filledByUid == request.auth.uid);
+
+      // Only admins can delete visits
+      allow delete: if isAdmin();
+    }
+
+    // Default rule for all other documents/collections.
+    // Only allow read/write if the user is authenticated AND their role is NOT "Pending" AND their status is NOT "deactivated".
+    // And now, also ensure the 'role' claim exists and is a string.
+    match /{document=**} {
+      // Sensible default: authenticated users may read, but writes must be explicitly allowed above
+      allow read: if isAuthenticatedAndAuthorized();
+    }
+  }
+}

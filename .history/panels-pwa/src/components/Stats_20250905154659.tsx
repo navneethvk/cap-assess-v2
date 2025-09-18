@@ -1,0 +1,140 @@
+import React, { useMemo, useState } from 'react'
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
+import { useFirestoreCollection } from '@/hooks/useFirestoreCollection'
+import { usersCollection, visitsCollection } from '@/firebase/paths'
+import { startOfWeek, addDays, getISOWeek, format } from 'date-fns'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+
+interface UserProfile {
+  id: string
+  uid: string
+  email: string
+  username?: string
+  role: string
+}
+
+interface VisitDoc {
+  id: string
+  date: any
+  debrief?: string
+  filledByUid: string
+}
+
+const Stats: React.FC = () => {
+  const { data: allUsers } = useFirestoreCollection<UserProfile>(usersCollection())
+  const { data: visitsRaw, isLoading, error } = useFirestoreCollection<VisitDoc>(visitsCollection())
+
+  const [roleMode, setRoleMode] = useState<'EM' | 'Visitor'>('EM')
+
+  const participants = useMemo(() => {
+    // build unique userIds from visits matching selected role
+    const ids = new Set<string>()
+    for (const v of (visitsRaw || [])) {
+      const complete = !!v.debrief && v.debrief.trim() !== ''
+      if (!complete) continue
+      if ((v as any).filledBy !== roleMode) continue
+      if (v.filledByUid) ids.add(v.filledByUid)
+    }
+    const list = Array.from(ids)
+    // map to labels via users, fallback to uid prefix
+    return list.map(uid => {
+      const user = (allUsers || []).find(u => u.uid === uid)
+      const label = user?.email || `${uid.slice(0,6)}…`
+      return { uid, label }
+    })
+  }, [visitsRaw, allUsers, roleMode])
+
+  const rows = useMemo(() => {
+    const toDate = (val: any): Date => val?.toDate ? val.toDate() : new Date(val)
+    const counts = new Map<string, Map<string, number>>()
+    const weekMeta = new Map<string, { label: string; start: Date; end: Date }>()
+    for (const v of (visitsRaw || [])) {
+      if (!v.debrief || v.debrief.trim() === '') continue
+      if ((v as any).filledBy !== roleMode) continue
+      const d = toDate(v.date)
+      const weekStart = startOfWeek(d, { weekStartsOn: 1 })
+      const weekEnd = addDays(weekStart, 5)
+      const weekNum = getISOWeek(weekStart)
+      const label = `W${weekNum} - ${format(weekStart, 'MMM do')} - ${format(weekEnd, 'MMM do')}`
+      const key = `${weekNum}-${format(weekStart, 'yyyy-MM-dd')}`
+      if (!counts.has(key)) counts.set(key, new Map())
+      if (!weekMeta.has(key)) weekMeta.set(key, { label, start: weekStart, end: weekEnd })
+      const emUid = v.filledByUid
+      if (!emUid) continue
+      const row = counts.get(key)!
+      row.set(emUid, (row.get(emUid) || 0) + 1)
+    }
+    const weeks = Array.from(weekMeta.entries()).sort((a, b) => a[1].start.getTime() - b[1].start.getTime())
+    return { counts, weeks }
+  }, [visitsRaw, roleMode])
+
+  return (
+    <div className="min-h-screen bg-background pb-20">
+      <div className="w-full max-w-5xl mx-auto px-3 sm:px-4 py-6 sm:py-10">
+        <Card>
+          <CardHeader>
+            <div className="flex items-center justify-between gap-4">
+              <div>
+                <CardTitle>Weekly Visits</CardTitle>
+                <CardDescription>Weeks are Monday–Saturday. A visit is complete when Debrief is not blank.</CardDescription>
+              </div>
+              <div className="w-40">
+                <Select value={roleMode} onValueChange={(v) => setRoleMode(v as 'EM' | 'Visitor')}>
+                  <SelectTrigger className="rounded-full">
+                    <SelectValue placeholder="Role" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="EM">EM stats</SelectItem>
+                    <SelectItem value="Visitor">Visitor stats</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+          </CardHeader>
+          <CardContent>
+            {isLoading ? (
+              <div className="py-8 text-center text-muted-foreground">Loading…</div>
+            ) : error ? (
+              <div className="py-8 text-center text-destructive">Failed to load.</div>
+            ) : participants.length === 0 ? (
+              <div className="py-8 text-center text-muted-foreground">No participants found for {roleMode}.</div>
+            ) : !rows || rows.weeks.length === 0 ? (
+              <div className="py-8 text-center text-muted-foreground">No completed visits found.</div>
+            ) : (
+              <div className="overflow-auto">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Week</TableHead>
+                      {participants.map(p => (
+                        <TableHead key={p.uid} className="whitespace-nowrap">{p.label}</TableHead>
+                      ))}
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {rows.weeks.map(([key, meta]) => {
+                      const row = rows.counts.get(key) || new Map<string, number>()
+                      return (
+                        <TableRow key={key}>
+                          <TableCell className="font-medium whitespace-nowrap">{meta.label}</TableCell>
+                          {participants.map(p => (
+                            <TableCell key={p.uid} className="text-center">{row.get(p.uid) || 0}</TableCell>
+                          ))}
+                        </TableRow>
+                      )
+                    })}
+                  </TableBody>
+                </Table>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      </div>
+    </div>
+  )
+}
+
+export default Stats
+
+
