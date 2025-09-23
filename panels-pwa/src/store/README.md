@@ -282,3 +282,5 @@ By following these guidelines, we ensure:
 Remember: **Zustand for global state, React state for local state, avoid React Context for global state.**
 
 
+
+

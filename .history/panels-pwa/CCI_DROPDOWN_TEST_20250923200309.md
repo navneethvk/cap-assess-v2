@@ -107,4 +107,3 @@ const cciOptions = useMemo(() => {
 This test will help us narrow down exactly which part of the title bar functionality is causing the infinite loop.
 
 
-

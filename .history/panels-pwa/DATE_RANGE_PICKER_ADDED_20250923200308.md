@@ -151,4 +151,3 @@ console.log('NotesView: useEffect running', {
 The date range picker has been successfully added to the title bar using the same stable approach that fixed the infinite loop issue. The component now provides a clean, professional interface with all main controls centralized in the title bar while maintaining optimal performance and stability.
 
 
-

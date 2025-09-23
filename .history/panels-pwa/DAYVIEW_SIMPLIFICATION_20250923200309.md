@@ -210,4 +210,3 @@ The DayView component has been successfully simplified to provide a clean, focus
 The simplified DayView now provides a much more intuitive and efficient way to browse visit cards by date.
 
 
-

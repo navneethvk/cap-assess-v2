@@ -260,4 +260,3 @@ The NotesView has been successfully redesigned to provide a Google Keep-like exp
 The new design provides a much more modern and user-friendly way to browse and interact with visit notes, making it easy to quickly find, pin, and access the information users need.
 
 
-
