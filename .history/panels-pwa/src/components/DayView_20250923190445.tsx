@@ -1,0 +1,294 @@
+import React, { useEffect, useMemo, useState } from 'react'
+import { ChevronLeft, ChevronRight } from 'lucide-react'
+
+import { Button, buttonConfigs } from '@/components/ui/button'
+import AddVisit from '@/components/AddVisit'
+import TimelineCard from '@/components/TimelineCard'
+import { useTitleBarSlots } from '@/store/titleBarSlots'
+import { useVisitsInRange } from '@/hooks/useVisitQueries'
+import { useUsersForVisits } from '@/hooks/useUsersForVisits'
+import { useFirestoreCollection } from '@/hooks/useFirestoreCollection'
+import { timestampToDate } from '@/types/firestore'
+import type { VisitDoc, UserDoc, CCIDoc, DocumentWithId } from '@/types/firestore'
+
+// Debug flag for development logging (set to false in production)
+const DEBUG_DAY_VIEW = false; // Disabled
+
+// Helper function to get the start of the week (Monday)
+const getStartOfWeek = (date: Date): Date => {
+  const startOfWeek = new Date(date)
+  const day = startOfWeek.getDay()
+  const diff = startOfWeek.getDate() - day + (day === 0 ? -6 : 1) // Adjust when day is Sunday
+  startOfWeek.setDate(diff)
+  startOfWeek.setHours(0, 0, 0, 0)
+  return startOfWeek
+}
+
+
+// Helper function to get all days in a week
+const getWeekDays = (startDate: Date): Date[] => {
+  const days: Date[] = []
+  for (let i = 0; i < 7; i++) {
+    const day = new Date(startDate)
+    day.setDate(startDate.getDate() + i)
+    days.push(day)
+  }
+  return days
+}
+
+// Helper function to get start and end of a specific day
+const getDayRange = (date: Date): { start: Date; end: Date } => {
+  const start = new Date(date)
+  start.setHours(0, 0, 0, 0)
+  
+  const end = new Date(date)
+  end.setHours(23, 59, 59, 999)
+  
+  return { start, end }
+}
+
+const DayView: React.FC = () => {
+  const { setSlots, clearSlots } = useTitleBarSlots()
+
+  const [selectedDate, setSelectedDate] = useState(new Date())
+  const [openCardId, setOpenCardId] = useState<string | null>(null)
+  
+  // Get current week for the date strip
+  const currentWeekStart = useMemo(() => getStartOfWeek(selectedDate), [selectedDate])
+  const weekDays = useMemo(() => getWeekDays(currentWeekStart), [currentWeekStart])
+  
+  // Get the day range for the selected date
+  const dayRange = useMemo(() => getDayRange(selectedDate), [selectedDate])
+  
+  // Load visits for the selected date only
+  const { visits, isLoading, error } = useVisitsInRange(dayRange.start, dayRange.end)
+  
+  // Fetch users and CCIs for the timeline
+  const { data: allUsers } = useUsersForVisits()
+  const { data: allCcis } = useFirestoreCollection<CCIDoc>('ccis')
+  
+  // Sort visits for the selected date by creation time
+  const sortedVisits = useMemo(() => {
+    return [...visits].sort((a, b) => {
+      const timeA = timestampToDate(a.createdAt) || new Date()
+      const timeB = timestampToDate(b.createdAt) || new Date()
+      return timeB.getTime() - timeA.getTime()
+    })
+  }, [visits])
+  
+  // Helper function to get week number
+  const getWeekNumber = (date: Date): number => {
+    const d = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()));
+    const dayNum = d.getUTCDay() || 7;
+    d.setUTCDate(d.getUTCDate() + 4 - dayNum);
+    const yearStart = new Date(Date.UTC(d.getUTCFullYear(), 0, 1));
+    return Math.ceil((((d.getTime() - yearStart.getTime()) / 86400000) + 1) / 7);
+  };
+
+  // Helper function to get Monday of the week
+  const getMondayOfWeek = (date: Date): Date => {
+    const d = new Date(date);
+    const day = d.getDay();
+    const diff = d.getDate() - day + (day === 0 ? -6 : 1); // adjust when day is Sunday
+    return new Date(d.setDate(diff));
+  };
+
+  // Navigation functions
+  const goToPreviousWeek = () => {
+    const newDate = new Date(selectedDate)
+    newDate.setDate(newDate.getDate() - 7)
+    const mondayOfWeek = getMondayOfWeek(newDate)
+    setSelectedDate(mondayOfWeek)
+  }
+
+  const goToNextWeek = () => {
+    const newDate = new Date(selectedDate)
+    newDate.setDate(newDate.getDate() + 7)
+    const mondayOfWeek = getMondayOfWeek(newDate)
+    setSelectedDate(mondayOfWeek)
+  }
+  
+  // No-op drag handlers to satisfy TimelineCard props while keeping DayView lean
+  const noopDragStart = (_e: React.DragEvent, _v: DocumentWithId<VisitDoc>) => {}
+  const noopDragOver = (e: React.DragEvent, _v: DocumentWithId<VisitDoc>) => { e.preventDefault?.() }
+  const noopDragLeave = () => {}
+  const noopDrop = (_e: React.DragEvent, _v: DocumentWithId<VisitDoc>) => {}
+
+  // Handle card toggle
+  const handleToggle = (visitId: string) => {
+    setOpenCardId(openCardId === visitId ? null : visitId)
+  }
+
+  // Format date as DD/MM/YYYY
+  const formatDateForInput = (date: Date): string => {
+    const day = date.getDate().toString().padStart(2, '0');
+    const month = (date.getMonth() + 1).toString().padStart(2, '0');
+    const year = date.getFullYear();
+    return `${day}/${month}/${year}`;
+  };
+
+  // Format date for HTML input (YYYY-MM-DD)
+  const formatDateForHTMLInput = (date: Date): string => {
+    const year = date.getFullYear();
+    const month = (date.getMonth() + 1).toString().padStart(2, '0');
+    const day = date.getDate().toString().padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  };
+
+  // Handle click on date box to open picker
+  const handleDateBoxClick = () => {
+    // Create a temporary input element and trigger its click
+    const tempInput = document.createElement('input');
+    tempInput.type = 'date';
+    tempInput.value = formatDateForHTMLInput(selectedDate);
+    tempInput.style.position = 'absolute';
+    tempInput.style.left = '-9999px';
+    tempInput.style.opacity = '0';
+    
+    document.body.appendChild(tempInput);
+    
+    tempInput.addEventListener('change', (e) => {
+      const target = e.target as HTMLInputElement;
+      const newDate = new Date(target.value);
+      if (!isNaN(newDate.getTime())) {
+        setSelectedDate(newDate);
+      }
+      document.body.removeChild(tempInput);
+    });
+    
+    tempInput.click();
+  };
+
+  // Title bar slots: center = date picker, right = arrows for day navigation
+  useEffect(() => {
+    const center = (
+      <div 
+        className="border border-gray-300 px-3 py-2 rounded-lg hover:bg-gray-50 cursor-pointer transition-colors min-w-[100px] text-center"
+        onClick={handleDateBoxClick}
+      >
+        <span className="font-semibold text-sm select-none">
+          {formatDateForInput(selectedDate)}
+        </span>
+      </div>
+    )
+    const right = (
+      <div className="flex items-center gap-2">
+        <Button {...buttonConfigs.icon} onClick={goToPreviousWeek} title="Previous week">
+          <ChevronLeft className="h-4 w-4" />
+        </Button>
+        <div className="px-2 py-1 text-xs font-medium text-gray-600 bg-gray-100 rounded">
+          W{getWeekNumber(selectedDate)}
+        </div>
+        <Button {...buttonConfigs.icon} onClick={goToNextWeek} title="Next week">
+          <ChevronRight className="h-4 w-4" />
+        </Button>
+      </div>
+    )
+    setSlots({ customCenter: center, customRight: right })
+    return () => clearSlots()
+  }, [selectedDate, setSlots, clearSlots])
+  
+  if (DEBUG_DAY_VIEW) {
+    console.log('DayView - visits count:', visits.length)
+    console.log('DayView - isLoading:', isLoading)
+    console.log('DayView - error:', error)
+  }
+  
+  if (isLoading) {
+    return (
+      <div className="flex justify-center items-center h-64">
+        <div className="text-gray-500">Loading visits...</div>
+      </div>
+    )
+  }
+  
+  if (error) {
+    return (
+      <div className="flex justify-center items-center h-64">
+        <div className="text-red-500">Error loading visits: {String(error)}</div>
+      </div>
+    )
+  }
+  
+  return (
+    <div className="relative">
+      {/* Week Days Row below title bar */}
+      <div className="px-4 pt-3">
+        <div className="flex justify-between">
+          {weekDays.map((day, index) => {
+            const isSelected = day.toDateString() === selectedDate.toDateString()
+            
+            return (
+              <button
+                key={index}
+                onClick={() => setSelectedDate(day)}
+                className={`flex flex-col items-center p-2 rounded-lg transition-colors ${
+                  isSelected 
+                    ? 'bg-blue-100 text-blue-700' 
+                    : 'hover:bg-gray-100 text-gray-700'
+                }`}
+              >
+                <span className="text-xs font-medium">
+                  {day.toLocaleDateString('en-IN', { weekday: 'short' })}
+                </span>
+                <span className="text-sm font-semibold">
+                  {day.getDate()}
+                </span>
+              </button>
+            )
+          })}
+        </div>
+      </div>
+      
+      {/* Add Visit Button */}
+      <div className="flex justify-center mb-6 pt-4">
+        <AddVisit />
+      </div>
+      
+      {/* Simple list of visits for the selected date */}
+      <div className="px-4">
+        {sortedVisits.length === 0 ? (
+          <div className="text-center text-gray-500 py-12">
+            <p>No visits found for {selectedDate.toLocaleDateString('en-IN', { 
+              weekday: 'long', 
+              year: 'numeric', 
+              month: 'long', 
+              day: 'numeric' 
+            })}.</p>
+            <p className="text-sm mt-2">Try selecting a different date or create a new visit.</p>
+          </div>
+        ) : (
+          <div className="space-y-4 max-w-2xl mx-auto">
+            {sortedVisits.map((visit) => {
+              if (DEBUG_DAY_VIEW) {
+                console.log('DayView - Rendering visit:', visit.id)
+              }
+              
+              return (
+                <div key={visit.id} className="relative">
+                  <TimelineCard
+                    visit={visit}
+                    users={(allUsers as DocumentWithId<UserDoc>[]) || []}
+                    ccis={(allCcis as DocumentWithId<CCIDoc>[]) || []}
+                    expanded={openCardId === visit.id}
+                    onToggle={() => handleToggle(visit.id)}
+                    onDragStart={noopDragStart}
+                    onDragOver={noopDragOver}
+                    onDragLeave={noopDragLeave}
+                    onDrop={noopDrop}
+                    isDragging={false}
+                    anyDragging={false}
+                    isDragTarget={false}
+                    onUpdated={() => {}}
+                  />
+                </div>
+              )
+            })}
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
+export default DayView

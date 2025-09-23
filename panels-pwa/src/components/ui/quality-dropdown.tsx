@@ -58,10 +58,10 @@ export const QualityDropdown: React.FC<QualityDropdownProps> = ({
   return (
     <Select value={value} onValueChange={onChange} disabled={disabled}>
       <SelectTrigger 
-        className={`px-2 py-1 text-[10px] font-medium rounded-full border ${currentConfig.className} ${className} w-auto min-w-0 [&>svg]:hidden`}
+        className={`px-2 py-1 text-[10px] font-medium rounded-full border ${currentConfig.className} ${className} w-auto min-w-0 whitespace-nowrap [&>svg]:hidden`}
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="flex items-center gap-1.5">
+        <div className="flex items-center gap-1.5 whitespace-nowrap">
           <currentConfig.icon className={`w-3 h-3 ${currentConfig.iconColor}`} />
           <span className="hidden md:inline">{currentConfig.label || 'Quality'}</span>
         </div>

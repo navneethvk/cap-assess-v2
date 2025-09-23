@@ -31,6 +31,26 @@ export const stripHtmlForPreview = (html?: string): string => {
 }
 
 /**
+ * Strips HTML tags while preserving line breaks for editing in textareas
+ * @param html - HTML string to process
+ * @returns Plain text with basic formatting preserved
+ */
+export const stripHtmlForEditing = (html?: string): string => {
+  if (!html) return ''
+
+  const tempDiv = document.createElement('div')
+  tempDiv.innerHTML = html
+
+  const text = tempDiv.innerText || tempDiv.textContent || ''
+
+  return text
+    .replace(/\u00a0/g, ' ')
+    .replace(/\r\n/g, '\n')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim()
+}
+
+/**
  * Detects if content contains HTML tags
  * @param content - String to check
  * @returns True if content contains HTML tags
