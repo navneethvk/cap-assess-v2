@@ -1,0 +1,938 @@
+/* Android-style UI typography */
+@import url('https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;600;700&display=swap');
+@import "tailwindcss";
+/* Simple popover styles for date range picker */
+[data-radix-popover-content] {
+  z-index: 9999 !important;
+  border-radius: 0.375rem !important;
+  box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05) !important;
+  opacity: 1 !important;
+}
+
+@layer base {
+  :root {
+    /* Modern Healthcare Light Theme - Blue-based inspired by Pomegranate Health */
+    --background: 210 60% 98%; /* Cool light blue-white #F8FAFE */
+    --foreground: 215 85% 15%; /* Deep navy text */
+    --card: 0 0% 100%; /* Pure white cards */
+    --card-foreground: 215 85% 15%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 215 85% 15%;
+    --primary: 215 85% 65%; /* Soft blue #4A90E2 */
+    --primary-foreground: 0 0% 98%;
+    --secondary: 210 50% 95%; /* Light blue-white */
+    --secondary-foreground: 215 60% 25%;
+    --muted: 210 30% 92%; /* Subtle blue-gray */
+    --muted-foreground: 215 30% 45%;
+    --accent: 215 70% 88%; /* Light blue accent */
+    --accent-foreground: 215 85% 15%;
+    --destructive: 0 75% 60%;
+    --destructive-foreground: 0 0% 98%;
+    --success: 145 65% 42%; /* Healthcare green */
+    --success-foreground: 0 0% 98%;
+    --warning: 35 85% 55%;
+    --warning-foreground: 0 0% 98%;
+    --info: 200 85% 50%;
+    --info-foreground: 0 0% 98%;
+    --border: 210 25% 85%; /* Soft blue-gray border */
+    --input: 210 50% 96%;
+    --ring: 215 85% 65%;
+    --radius: 50px; /* Oval/pill-shaped buttons like the example */
+    
+    /* Admin panel specific colors */
+    --admin-tabs-bg: 210 30% 92%;
+    --admin-tabs-fg: 215 30% 40%;
+    --admin-header-gradient-from: 0 0% 100%;
+    --admin-header-gradient-to: 210 30% 95%;
+    --admin-card-header-bg: 0 0% 100%;
+    --admin-table-header-bg: 210 30% 95%;
+    --admin-table-row-hover: 215 50% 95%;
+    
+    /* Gradient variables for light mode */
+    --gradient-primary-from: 215 85% 65%;
+    --gradient-primary-to: 215 75% 55%;
+    --gradient-admin-violet-from: 250 40% 85%;
+    --gradient-admin-violet-to: 250 40% 75%;
+    --gradient-admin-blue-from: 200 50% 85%;
+    --gradient-admin-blue-to: 200 50% 75%;
+    --gradient-admin-emerald-from: 145 50% 80%;
+    --gradient-admin-emerald-to: 145 50% 70%;
+    
+    /* Chart colors */
+    --chart-1: 12 76% 61%;
+    --chart-2: 173 58% 39%;
+    --chart-3: 197 37% 24%;
+    --chart-4: 43 74% 66%;
+    --chart-5: 27 87% 67%;
+
+    /* Global horizontal gutter for top bars (kept symmetric) */
+    --app-gutter: 12px;
+  }
+
+  .dark {
+    /* Modern Healthcare Dark Theme - Blue-based */
+    --background: 215 40% 8%; /* Deep navy background */
+    --foreground: 210 60% 85%; /* Cool light blue text */
+    --card: 215 35% 12%; /* Dark navy cards */
+    --card-foreground: 210 60% 85%;
+    --popover: 215 35% 15%;
+    --popover-foreground: 210 60% 85%;
+    --primary: 215 90% 70%; /* Bright blue */
+    --primary-foreground: 215 40% 8%;
+    --secondary: 215 20% 18%;
+    --secondary-foreground: 210 50% 75%;
+    --muted: 215 20% 15%;
+    --muted-foreground: 210 40% 60%;
+    --accent: 215 70% 50%;
+    --accent-foreground: 210 60% 85%;
+    --destructive: 0 75% 60%;
+    --destructive-foreground: 210 60% 95%;
+    --success: 145 60% 55%;
+    --success-foreground: 215 40% 8%;
+    --warning: 35 80% 65%;
+    --warning-foreground: 215 40% 8%;
+    --info: 200 80% 65%;
+    --info-foreground: 215 40% 8%;
+    --border: 215 40% 25%;
+    --input: 215 20% 15%;
+    --ring: 215 90% 70%;
+    
+    /* Admin panel specific colors */
+    --admin-tabs-bg: 215 20% 15%;
+    --admin-tabs-fg: 210 50% 70%;
+    --admin-header-gradient-from: 215 35% 12%;
+    --admin-header-gradient-to: 215 40% 8%;
+    --admin-card-header-bg: 215 20% 15%;
+    --admin-table-header-bg: 215 20% 15%;
+    --admin-table-row-hover: 215 30% 18%;
+    
+    /* Gradient variables for dark mode */
+    --gradient-primary-from: 215 90% 70%;
+    --gradient-primary-to: 215 80% 55%;
+    --gradient-admin-violet-from: 250 40% 25%;
+    --gradient-admin-violet-to: 250 40% 15%;
+    --gradient-admin-blue-from: 200 50% 25%;
+    --gradient-admin-blue-to: 200 50% 15%;
+    --gradient-admin-emerald-from: 145 60% 30%;
+    --gradient-admin-emerald-to: 145 60% 20%;
+    
+    /* Chart colors */
+    --chart-1: 220 70% 50%;
+    --chart-2: 160 60% 45%;
+    --chart-3: 30 80% 55%;
+    --chart-4: 280 65% 60%;
+    --chart-5: 340 75% 55%;
+  }
+}
+
+/* Responsive gutter scaling */
+@media (min-width: 640px) { :root { --app-gutter: 16px; } }
+@media (min-width: 768px) { :root { --app-gutter: 24px; } }
+@media (min-width: 1024px) { :root { --app-gutter: 32px; } }
+
+@layer components {
+  /* Eyebrow label for section hierarchy */
+  .eyebrow {
+    display: inline-block;
+    font-size: 0.65rem;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: hsl(var(--muted-foreground));
+  }
+
+  /* Soft divider */
+  .divider-soft {
+    height: 1px;
+    background: hsl(var(--border));
+    opacity: 0.7;
+  }
+
+  /* Emphasized card with clear header band */
+  .section-card {
+    border: 2px solid hsl(var(--foreground)) !important;
+    border-radius: 16px !important;
+    background: hsl(var(--card)) !important;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.06) !important;
+  }
+
+  .section-card-header {
+    background: linear-gradient(180deg, hsl(var(--admin-header-gradient-from)), hsl(var(--admin-header-gradient-to))) !important;
+    border-bottom: 1px solid hsl(var(--border)) !important;
+  }
+
+  /* Subsection band for filters or summaries */
+  .section-band {
+    background: hsl(var(--admin-tabs-bg));
+    border-top: 1px solid hsl(var(--border));
+    border-bottom: 1px solid hsl(var(--border));
+    padding: 0.75rem;
+  }
+}
+
+/* Material 3 Expressive (scoped) */
+@layer components {
+  .m3-expressive {
+    --m3-surface: #FFFBFE;
+    --m3-on-surface: #1C1B1F;
+    --m3-surface-container: #F3EDF7;
+    --m3-surface-container-high: #ECE6F0;
+    --m3-secondary-container: #E8DEF8;
+    --m3-on-secondary-container: #1D192B;
+    --m3-primary: #6750A4;
+    --m3-on-primary: #FFFFFF;
+    --m3-outline: #79747E;
+    --m3-elev-1: 0 1px 2px rgba(0,0,0,0.16), 0 1px 3px rgba(0,0,0,0.08);
+    --m3-elev-2: 0 2px 6px rgba(0,0,0,0.18), 0 4px 6px rgba(0,0,0,0.12);
+  }
+
+  .m3-expressive .m3-card {
+    background: var(--m3-surface-container);
+    border: 1px solid var(--m3-outline);
+    border-radius: 16px;
+    box-shadow: var(--m3-elev-1);
+  }
+  .m3-expressive .m3-card-header {
+    background: var(--m3-surface-container-high);
+    border-bottom: 1px solid var(--m3-outline);
+  }
+
+  .m3-expressive .m3-filter-band {
+    background: var(--m3-surface);
+    border-top: 1px solid var(--m3-outline);
+    border-bottom: 1px solid var(--m3-outline);
+    padding: 12px;
+  }
+
+  /* Tonal filled button based on our primary-button element */
+  .m3-expressive .m3-tonal-button.primary-button {
+    background: var(--m3-secondary-container) !important;
+    color: var(--m3-on-secondary-container) !important;
+    border: 1px solid var(--m3-outline) !important;
+    box-shadow: var(--m3-elev-1) !important;
+  }
+  .m3-expressive .m3-tonal-button.primary-button:active {
+    transform: translate(2px, 2px) !important;
+    box-shadow: none !important;
+  }
+
+  /* Assist chip look for segmented control buttons in scope */
+  .m3-expressive .m3-chips button {
+    border-radius: 9999px !important;
+    border: 1px solid var(--m3-outline) !important;
+    background: transparent !important;
+    box-shadow: none !important;
+    color: var(--m3-on-surface) !important;
+    transform: none !important; /* neutralize segmented control translate */
+    height: 32px; /* consistent chip height */
+    line-height: 1; 
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0 12px; /* approx px-3 */
+  }
+  .m3-expressive .m3-chips button[aria-checked="true"] {
+    background: var(--m3-secondary-container) !important;
+    color: var(--m3-on-secondary-container) !important;
+    border-color: transparent !important;
+    transform: none !important; /* no offset for selected */
+  }
+
+  .m3-expressive .m3-sticky-bar {
+    background: color-mix(in srgb, var(--m3-surface) 85%, transparent) !important;
+    box-shadow: var(--m3-elev-2) !important;
+    border-top: 1px solid var(--m3-outline) !important;
+  }
+}
+
+@layer base {
+  * {
+    border-color: hsl(var(--border));
+  }
+  
+  html, body {
+    overflow-x: hidden;
+    width: 100%;
+    max-width: 100vw;
+  }
+  
+  body {
+    background-color: hsl(var(--background));
+    color: hsl(var(--foreground));
+    font-family: 'Roboto', system-ui, -apple-system, 'Segoe UI', 'Noto Sans', 'Helvetica Neue', Arial, sans-serif;
+    font-weight: 500; /* Android QS uses medium-weight look */
+    letter-spacing: 0; /* Reduce tracking to Material feel */
+    font-variant-ligatures: common-ligatures;
+    font-variant-numeric: tabular-nums; /* Better clocks/dates/counters */
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    text-rendering: optimizeLegibility;
+    line-height: 1.6;
+  }
+
+  /* Timeline visuals to match reference */
+  .timeline-spine {
+    background: linear-gradient(to bottom, hsl(var(--border)), hsl(var(--border)));
+  }
+  .timeline-dot {
+    height: 12px;
+    width: 12px;
+    border-radius: 9999px;
+    background: hsl(var(--primary));
+    border: 3px solid #fff;
+    box-shadow: 0 2px 6px rgba(0,0,0,0.08);
+  }
+  
+  /* Ensure all containers respect viewport width */
+  .container, [class*="container"] {
+    max-width: 100vw;
+    overflow-x: hidden;
+  }
+  
+  /* Prevent any element from exceeding viewport width */
+  * {
+    max-width: 100%;
+    box-sizing: border-box;
+  }
+  
+  /* Specific mobile-first table controls */
+  table {
+    width: 100%;
+    table-layout: fixed;
+  }
+  
+  @media (max-width: 768px) {
+    /* Force mobile-specific layout */
+    .mobile-stack {
+      display: block !important;
+    }
+    
+    .mobile-hide {
+      display: none !important;
+    }
+    
+    .mobile-full-width {
+      width: 100% !important;
+      max-width: 100% !important;
+    }
+    
+    /* Ensure touch targets are at least 44px */
+    button {
+      min-height: 44px;
+    }
+    
+    /* Improve spacing for mobile interactions */
+    [data-radix-tabs-trigger] {
+      min-height: 44px;
+      padding: 8px 12px;
+    }
+  }
+  
+  /* Modern text styling */
+  .modern-gradient-text {
+    background: linear-gradient(135deg, hsl(var(--primary)), hsl(var(--accent)));
+    background-clip: text;
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    font-weight: 600;
+  }
+  
+  /* Light mode - clean text with subtle shadow */
+  :root .modern-gradient-text {
+    text-shadow: 0 1px 2px hsl(var(--primary) / 0.1);
+  }
+  
+  /* Dark mode - enhanced gradient visibility */
+  .dark .modern-gradient-text {
+    background: linear-gradient(135deg, hsl(var(--primary)), hsl(var(--accent)));
+    background-clip: text;
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+  }
+  
+  .modern-border {
+    border: 1px solid hsl(var(--border));
+    box-shadow: 0 2px 8px hsl(var(--primary) / 0.08);
+    backdrop-filter: blur(8px);
+  }
+  
+  .modern-glass::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: linear-gradient(
+      135deg,
+      hsl(var(--primary) / 0.05) 0%,
+      transparent 50%,
+      hsl(var(--accent) / 0.05) 100%
+    );
+    pointer-events: none;
+    z-index: 1;
+  }
+  
+  .modern-pulse {
+    animation: modern-pulse 3s ease-in-out infinite;
+  }
+  
+  @keyframes modern-pulse {
+    0%, 100% { 
+      opacity: 1;
+      transform: scale(1);
+    }
+    50% { 
+      opacity: 0.95;
+      transform: scale(1.01);
+    }
+  }
+  
+  /* Modern cursor indicator */
+  .modern-cursor::after {
+    content: '|';
+    animation: cursor-fade 1.5s ease-in-out infinite;
+    color: hsl(var(--primary));
+    margin-left: 2px;
+  }
+  
+  @keyframes cursor-fade {
+    0%, 50% { opacity: 1; }
+    51%, 100% { opacity: 0.3; }
+  }
+
+  /* Hide scrollbars for horizontal chip rows on mobile */
+  .no-scrollbar {
+    -ms-overflow-style: none; /* IE and Edge */
+    scrollbar-width: none; /* Firefox */
+  }
+  .no-scrollbar::-webkit-scrollbar {
+    display: none; /* Chrome, Safari */
+  }
+
+  /* Pastel Admin skin (UIBrief) */
+  .pastel-admin {
+    --pastel-bg: #FAFBFC;
+    --pastel-section: #F3F4F6;
+    --pastel-charcoal: #1E293B;
+    --pastel-slate: #64748B;
+    --pastel-primary: #E8E3F5; /* lavender */
+    --pastel-success: #C7E9D7;
+    --pastel-info: #D6E5F0;
+    --pastel-warning: #FFE5CC;
+    --pastel-error: #F5D5DC;
+    --pastel-active: #B5F4E0;
+    --pastel-highlight: #FFF4D6;
+    --pastel-border: #E2E8F0;
+    --pastel-shadow-sm: 0 2px 8px rgba(0,0,0,0.06);
+    --pastel-shadow-md: 0 4px 12px rgba(0,0,0,0.08);
+  }
+
+  .pastel-admin {
+    color: var(--pastel-slate);
+    background-color: var(--pastel-bg);
+  }
+
+  .pastel-admin h1, .pastel-admin h2, .pastel-admin h3, .pastel-admin h4 {
+    color: var(--pastel-charcoal);
+  }
+
+  .pastel-admin .primary-button {
+    border-color: var(--pastel-charcoal) !important;
+    background: linear-gradient(180deg, var(--pastel-primary) 0%, #E0DAF0 100%) !important;
+    color: var(--pastel-charcoal) !important;
+    box-shadow: 4px 4px 0px 0px var(--pastel-charcoal) !important;
+  }
+
+  .pastel-admin .primary-button:active {
+    transform: translate(4px, 4px) !important;
+    box-shadow: 0px 0px 0px 0px var(--pastel-charcoal) !important;
+  }
+
+  .pastel-admin .home-card,
+  .pastel-admin .modern-border,
+  .pastel-admin .border {
+    border-color: var(--pastel-border) !important;
+    box-shadow: var(--pastel-shadow-sm) !important;
+  }
+
+  .pastel-admin [data-radix-tabs-list] {
+    background-color: transparent !important;
+  }
+
+  .pastel-admin table thead tr { background-color: var(--pastel-section) !important; }
+  .pastel-admin table tbody tr { min-height: 56px; }
+  .pastel-admin table tbody tr:hover { background-color: #F8FAFC; }
+  
+  /* Modern push button with stable invisible hitbox
+     Scoped ONLY to our primary button class to avoid styling
+     other interactive controls (e.g., SelectTrigger). */
+  .primary-button, .btn-primary {
+    font-family: inherit;
+    font-weight: 600;
+    letter-spacing: 0.05em;
+    border-radius: 9999px !important; /* Full oval/pill shape */
+    transform: translate(0, 0);
+    border: 2px solid hsl(var(--foreground));
+    background: hsl(var(--background));
+    box-shadow: 4px 4px 0px 0px hsl(var(--foreground));
+    transition: all 0.1s ease;
+    position: relative;
+  }
+
+  /* Invisible oversized hitbox that never moves */
+  .primary-button::before, .btn-primary::before {
+    content: '';
+    position: absolute;
+    top: -10px;
+    left: -10px;
+    right: -10px;
+    bottom: -10px;
+  }
+  
+  .primary-button:hover, .btn-primary:hover {
+    /* Disable hover lift globally for primary buttons */
+    transform: translate(0, 0);
+    box-shadow: 4px 4px 0px 0px hsl(var(--foreground));
+  }
+
+  /* Opt-in: re-enable primary hover interactions within a scope */
+  .allow-primary-hover .primary-button:hover,
+  .allow-primary-hover .btn-primary:hover {
+    transform: translate(-5px, -5px);
+    box-shadow: 9px 9px 0px 0px hsl(var(--foreground));
+  }
+  
+  .primary-button:active, .btn-primary:active {
+    transform: translate(4px, 4px);
+    box-shadow: 0px 0px 0px 0px hsl(var(--foreground));
+  }
+  
+  /* Prevent tab backgrounds and other container elements from moving with buttons */
+  [data-radix-tabs-list],
+  .tabs-list,
+  [role="tablist"] {
+    transform: none !important;
+  }
+
+  /* Chrome-like Tabs (opt-in via class on Trigger) */
+  .chrome-tab {
+    border-color: hsl(var(--foreground)) !important;
+    background: hsl(var(--background)) !important;
+    color: hsl(var(--foreground)) !important;
+    transition: background 120ms ease, color 120ms ease;
+  }
+  .chrome-tab:hover { background: hsl(var(--secondary)); }
+  .chrome-tab[data-state="active"] { background: hsl(var(--background)); }
+
+  /* Primary button class for loose primary buttons (not in tabs) */
+  .primary-button {
+    all: unset !important;
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    font-family: inherit !important;
+    font-weight: 600 !important;
+    letter-spacing: 0.05em !important;
+    padding: 0.375rem 0.75rem !important;
+    cursor: pointer !important;
+    border-radius: 9999px !important;
+    transform: translate(0, 0) !important;
+    border: 2px solid hsl(var(--foreground)) !important;
+    background: hsl(var(--background)) !important;
+    color: hsl(var(--foreground)) !important;
+    box-shadow: 4px 4px 0px 0px hsl(var(--foreground)) !important;
+    transition: all 0.1s ease !important;
+  }
+
+
+  .primary-button:active {
+    transform: translate(4px, 4px) !important;
+    box-shadow: 0px 0px 0px 0px hsl(var(--foreground)) !important;
+    background: hsl(var(--background)) !important;
+    color: hsl(var(--foreground)) !important;
+  }
+
+  /* Primary popup button when dropdown is open - should look pressed */
+  .primary-button[data-state="open"],
+  .primary-button[aria-expanded="true"] {
+    transform: translate(4px, 4px) !important;
+    box-shadow: 0px 0px 0px 0px hsl(var(--foreground)) !important;
+    background: hsl(var(--background)) !important;
+    color: hsl(var(--foreground)) !important;
+  }
+
+  /* Home page card styling to match popup menu curves */
+  .home-card {
+    border: none !important;
+    border-radius: 20px !important;
+    box-shadow: none !important;
+    background-color: hsl(var(--background)) !important;
+    background-clip: padding-box !important;
+    position: relative !important;
+    z-index: 1 !important;
+    min-height: calc(100vh - 2rem) !important;
+    width: 100% !important;
+  }
+
+  /* Full-bleed card on desktop */
+  @media (min-width: 768px) {
+    .home-card {
+      border-radius: 0 !important;
+      min-height: 100vh !important;
+    }
+  }
+
+  /* Ensure side drawer background is opaque */
+  .side-drawer {
+    background-color: hsl(var(--background)) !important;
+    backdrop-filter: none !important;
+  }
+
+  /* Title bar symmetric paddings using global gutter */
+  .title-bar {
+    padding-left: var(--app-gutter) !important;
+    padding-right: var(--app-gutter) !important;
+  }
+
+  /* Ensure no background elements show through */
+  .home-card::before {
+    display: none !important;
+  }
+
+  /* Input styling */
+  input, textarea, select {
+    font-family: inherit;
+    background-color: hsl(var(--input));
+    border: 1px solid hsl(var(--border));
+  }
+  
+  input:focus, textarea:focus, select:focus {
+    box-shadow: 0 0 0 2px hsl(var(--ring) / 0.5), 0 0 10px hsl(var(--ring) / 0.3);
+  }
+  
+  /* Force dropdown menus to be opaque with button-like styling */
+  [data-radix-menu-content],
+  [data-radix-dropdown-menu-content],
+  [data-radix-select-content] {
+    background-color: white !important;
+    backdrop-filter: none !important;
+    border: 2px solid hsl(var(--foreground)) !important;
+    border-radius: 20px !important;
+    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06) !important;
+    padding: 8px !important;
+    opacity: 1 !important;
+  }
+
+  /* Menu items with consistent styling */
+  [data-radix-menu-item],
+  [data-radix-dropdown-menu-item],
+  [data-radix-select-item] {
+    background-color: white !important;
+    border-radius: 12px !important;
+    padding: 8px 12px !important;
+    margin: 2px 0 !important;
+    transition: background-color 0.1s ease !important;
+  }
+
+  [data-radix-menu-item]:hover,
+  [data-radix-dropdown-menu-item]:hover,
+  [data-radix-select-item]:hover {
+    background-color: hsl(var(--accent)) !important;
+  }
+
+  /* Additional specificity for select components */
+  .select-content,
+  [role="listbox"],
+  [data-radix-select-viewport] {
+    background-color: white !important;
+    backdrop-filter: none !important;
+  }
+  
+  /* Physics-based interaction styles */
+  .physics-interactive {
+    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+    transform-style: preserve-3d;
+  }
+  
+  .physics-interactive:hover {
+    transform: translateY(-2px) scale(1.02);
+    box-shadow: 0 8px 25px rgba(0, 0, 0, 0.15);
+  }
+  
+  .physics-interactive:active {
+    transform: translateY(1px) scale(0.98);
+    transition-duration: 0.1s;
+  }
+  
+  /* Magnetic interaction zone */
+  .magnetic-zone {
+    position: relative;
+    transition: transform 0.3s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+  }
+  
+  /* Ripple effect container */
+  .ripple-container {
+    position: relative;
+    overflow: hidden;
+  }
+  
+  .ripple-effect {
+    position: absolute;
+    border-radius: 50%;
+    background: currentColor;
+    opacity: 0.3;
+    pointer-events: none;
+    transform: scale(0);
+    animation: ripple-expand 0.6s ease-out;
+  }
+  
+  @keyframes ripple-expand {
+    to {
+      transform: scale(4);
+      opacity: 0;
+    }
+  }
+  
+  /* Floating animation keyframes */
+  @keyframes float-gentle {
+    0%, 100% { transform: translateY(0px) rotate(0deg); }
+    33% { transform: translateY(-10px) rotate(1deg); }
+    66% { transform: translateY(5px) rotate(-1deg); }
+  }
+  
+  @keyframes float-subtle {
+    0%, 100% { transform: translateY(0px); }
+    50% { transform: translateY(-3px); }
+  }
+  
+  .float-gentle {
+    animation: float-gentle 6s ease-in-out infinite;
+  }
+  
+  .float-subtle {
+    animation: float-subtle 4s ease-in-out infinite;
+  }
+  
+  /* Modern glow effects */
+  @keyframes modern-glow {
+    0%, 100% { 
+      box-shadow: 
+        0 2px 8px hsl(var(--primary) / 0.1),
+        0 1px 3px hsl(var(--primary) / 0.15);
+    }
+    50% { 
+      box-shadow: 
+        0 4px 16px hsl(var(--primary) / 0.2),
+        0 2px 6px hsl(var(--primary) / 0.25),
+        0 8px 24px hsl(var(--primary) / 0.1);
+    }
+  }
+  
+  .modern-glow {
+    animation: modern-glow 3s ease-in-out infinite;
+  }
+  
+  /* Enhanced button physics with pill shape and top-left lighting */
+  .btn-physics {
+    position: relative;
+    transform-style: preserve-3d;
+    transition: all 0.15s cubic-bezier(0.4, 0, 0.2, 1);
+    border-radius: var(--radius);
+  }
+  
+  .btn-physics::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: linear-gradient(135deg, rgba(255,255,255,0.15) 0%, rgba(255,255,255,0.05) 50%, rgba(255,255,255,0) 100%);
+    border-radius: inherit;
+    transition: opacity 0.15s ease;
+    opacity: 0;
+  }
+  
+  .btn-physics:hover::before {
+    opacity: 1;
+  }
+  
+  .btn-physics:hover {
+    /* Button rises from fixed black slot - inherits base button shadows */
+    transform: translateY(-4px) scale(1.02);
+  }
+  
+  .btn-physics:active {
+    /* Button pressed into black slot with slot still visible */
+    transform: translateY(4px) scale(0.98);
+  }
+  
+  
+  /* Card physics interactions */
+  .card-physics {
+    transition: all 0.3s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+    transform-style: preserve-3d;
+  }
+  
+  .card-physics:hover {
+    transform: translateY(-4px) rotateX(-2deg) rotateY(2deg);
+    box-shadow: 
+      0 10px 30px rgba(0, 0, 0, 0.1),
+      0 0 20px hsl(var(--primary) / 0.1);
+  }
+  
+  /* Smooth focus transitions */
+  .focus-physics:focus-visible {
+    outline: none;
+    box-shadow: 
+      0 0 0 2px hsl(var(--ring)),
+      0 0 20px hsl(var(--ring) / 0.3);
+    transform: scale(1.02);
+    transition: all 0.2s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+  }
+
+  /* Rich Text Editor Styles */
+  .ProseMirror {
+    outline: none;
+    padding: 1rem;
+    min-height: 200px;
+    line-height: 1.6;
+    font-size: 0.875rem;
+    color: hsl(var(--foreground));
+  }
+
+  .ProseMirror p {
+    margin: 0.5rem 0;
+  }
+
+  .ProseMirror p:first-child {
+    margin-top: 0;
+  }
+
+  .ProseMirror p:last-child {
+    margin-bottom: 0;
+  }
+
+  .ProseMirror h1,
+  .ProseMirror h2,
+  .ProseMirror h3,
+  .ProseMirror h4,
+  .ProseMirror h5,
+  .ProseMirror h6 {
+    margin: 1rem 0 0.5rem 0;
+    font-weight: 600;
+    line-height: 1.3;
+  }
+
+  .ProseMirror h1:first-child,
+  .ProseMirror h2:first-child,
+  .ProseMirror h3:first-child,
+  .ProseMirror h4:first-child,
+  .ProseMirror h5:first-child,
+  .ProseMirror h6:first-child {
+    margin-top: 0;
+  }
+
+  .ProseMirror ul,
+  .ProseMirror ol {
+    margin: 0.5rem 0;
+    padding-left: 1.5rem;
+  }
+
+  .ProseMirror li {
+    margin: 0.25rem 0;
+  }
+
+  /* Tight lists for markdown */
+  .ProseMirror ul.tight,
+  .ProseMirror ol.tight {
+    margin: 0.25rem 0;
+  }
+
+  .ProseMirror ul.tight li,
+  .ProseMirror ol.tight li {
+    margin: 0.125rem 0;
+  }
+
+  .ProseMirror ul.tight li p,
+  .ProseMirror ol.tight li p {
+    margin: 0;
+  }
+
+  .ProseMirror blockquote {
+    margin: 1rem 0;
+    padding-left: 1rem;
+    border-left: 3px solid hsl(var(--border));
+    color: hsl(var(--muted-foreground));
+    font-style: italic;
+  }
+
+  .ProseMirror code {
+    background: hsl(var(--muted));
+    padding: 0.125rem 0.25rem;
+    border-radius: 0.25rem;
+    font-family: 'SF Mono', 'Monaco', 'Inconsolata', 'Roboto Mono', monospace;
+    font-size: 0.8em;
+  }
+
+  .ProseMirror pre {
+    background: hsl(var(--muted));
+    padding: 1rem;
+    border-radius: 0.5rem;
+    overflow-x: auto;
+    margin: 1rem 0;
+  }
+
+  .ProseMirror pre code {
+    background: none;
+    padding: 0;
+  }
+
+  .ProseMirror img {
+    max-width: 100%;
+    height: auto;
+    border-radius: 0.5rem;
+    margin: 0.5rem 0;
+  }
+
+  .ProseMirror a {
+    color: hsl(var(--primary));
+    text-decoration: underline;
+    text-underline-offset: 2px;
+  }
+
+  .ProseMirror a:hover {
+    color: hsl(var(--primary) / 0.8);
+  }
+
+  .ProseMirror strong {
+    font-weight: 600;
+  }
+
+  .ProseMirror em {
+    font-style: italic;
+  }
+
+  .ProseMirror .is-editor-empty:first-child::before {
+    content: attr(data-placeholder);
+    float: left;
+    color: hsl(var(--muted-foreground));
+    pointer-events: none;
+    height: 0;
+  }
+
+  /* Editor focus state */
+  .ProseMirror:focus {
+    outline: none;
+    box-shadow: 0 0 0 2px hsl(var(--ring));
+  }
+
+  /* Placeholder styles */
+  .ProseMirror p.is-editor-empty:first-child::before {
+    content: attr(data-placeholder);
+    float: left;
+    color: hsl(var(--muted-foreground));
+    pointer-events: none;
+    height: 0;
+  }
+}
