@@ -1,18 +1,20 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.captureVersionHistory = exports.panelExportVisitsCsv = exports.exportVisitsCsvNightly = exports.panelCreateUser = exports.updateUserRoleClaim = exports.createUserRecord = void 0;
+exports.insightDataAggregator = exports.clearVersionHistory = exports.captureVersionHistory = exports.panelExportVisitsCsv = exports.exportVisitsCsvNightly = exports.panelCreateUser = exports.updateUserRoleClaim = exports.createUserRecord = void 0;
 const functions = require("firebase-functions");
 const admin = require("firebase-admin");
 admin.initializeApp();
 exports.createUserRecord = functions.auth.user().onCreate(async (user) => {
     try {
         const userRef = admin.firestore().collection("users").doc(user.uid);
-        await userRef.set({
-            email: user.email,
+        const userData = {
+            email: user.email || '',
             uid: user.uid,
             role: "Pending",
+            status: "Active",
             createdAt: admin.firestore.FieldValue.serverTimestamp(),
-        }, { merge: true });
+        };
+        await userRef.set(userData, { merge: true });
         await admin.auth().setCustomUserClaims(user.uid, { role: "Pending" });
         console.log(`User record created and custom claim set for ${user.email} with role: Pending`);
     }
@@ -71,14 +73,15 @@ exports.panelCreateUser = functions.https.onCall(async (data, context) => {
             disabled: false,
         });
         const uid = userRecord.uid;
-        await admin.firestore().collection("users").doc(uid).set({
+        const userData = {
             uid,
             email,
             role: newRole,
-            username: username || null,
+            username: username || undefined,
             status: "Active",
             createdAt: admin.firestore.FieldValue.serverTimestamp(),
-        }, { merge: true });
+        };
+        await admin.firestore().collection("users").doc(uid).set(userData, { merge: true });
         await admin.auth().setCustomUserClaims(uid, { role: newRole });
         return { uid };
     }
@@ -557,4 +560,575 @@ function generateSnapshotSummary(events) {
         summaryParts.push(`${typeCounts.note_delete} note${typeCounts.note_delete > 1 ? 's' : ''} deleted`);
     return summaryParts.join(', ');
 }
+// Cloud Function to clear version history for a specific visit
+exports.clearVersionHistory = functions.https.onCall(async (data, context) => {
+    // Check if user is authenticated
+    if (!context.auth) {
+        throw new functions.https.HttpsError('unauthenticated', 'Must be authenticated to clear version history');
+    }
+    const { visitId } = data;
+    if (!visitId) {
+        throw new functions.https.HttpsError('invalid-argument', 'visitId is required');
+    }
+    try {
+        const firestore = admin.firestore();
+        const visitRef = firestore.collection('visits').doc(visitId);
+        // Delete all events in the events subcollection
+        const eventsSnapshot = await visitRef.collection('events').get();
+        const eventBatch = firestore.batch();
+        eventsSnapshot.docs.forEach(doc => {
+            eventBatch.delete(doc.ref);
+        });
+        await eventBatch.commit();
+        // Delete all snapshots in the snapshots subcollection
+        const snapshotsSnapshot = await visitRef.collection('snapshots').get();
+        const snapshotBatch = firestore.batch();
+        snapshotsSnapshot.docs.forEach(doc => {
+            snapshotBatch.delete(doc.ref);
+        });
+        await snapshotBatch.commit();
+        functions.logger.info(`Cleared version history for visit ${visitId}`, {
+            visitId,
+            eventsDeleted: eventsSnapshot.docs.length,
+            snapshotsDeleted: snapshotsSnapshot.docs.length
+        });
+        return {
+            success: true,
+            eventsDeleted: eventsSnapshot.docs.length,
+            snapshotsDeleted: snapshotsSnapshot.docs.length
+        };
+    }
+    catch (error) {
+        functions.logger.error(`Error clearing version history for visit ${visitId}:`, error);
+        throw new functions.https.HttpsError('internal', 'Failed to clear version history');
+    }
+});
+// Insight Data Aggregator Functions
+/**
+ * Get week identifier in YYYY-WW format
+ */
+function getWeekId(date) {
+    const year = date.getFullYear();
+    const week = getWeekNumber(date);
+    return `${year}-W${week.toString().padStart(2, '0')}`;
+}
+/**
+ * Get week number of the year
+ */
+function getWeekNumber(date) {
+    const firstDayOfYear = new Date(date.getFullYear(), 0, 1);
+    const pastDaysOfYear = (date.getTime() - firstDayOfYear.getTime()) / 86400000;
+    return Math.ceil((pastDaysOfYear + firstDayOfYear.getDay() + 1) / 7);
+}
+/**
+ * Get start of week (Monday)
+ */
+function getStartOfWeek(date) {
+    const startOfWeek = new Date(date);
+    const day = startOfWeek.getDay();
+    const diff = startOfWeek.getDate() - day + (day === 0 ? -6 : 1);
+    startOfWeek.setDate(diff);
+    startOfWeek.setHours(0, 0, 0, 0);
+    return startOfWeek;
+}
+/**
+ * Get end of week (Sunday)
+ */
+function getEndOfWeek(date) {
+    const endOfWeek = getStartOfWeek(date);
+    endOfWeek.setDate(endOfWeek.getDate() + 6);
+    endOfWeek.setHours(23, 59, 59, 999);
+    return endOfWeek;
+}
+/**
+ * Aggregate weekly visits data
+ */
+async function aggregateWeeklyVisitsCount(targetDate) {
+    try {
+        const weekId = getWeekId(targetDate);
+        const weekStart = getStartOfWeek(targetDate);
+        const weekEnd = getEndOfWeek(targetDate);
+        functions.logger.info(`Aggregating weekly visits for week ${weekId}`, {
+            weekStart: weekStart.toISOString(),
+            weekEnd: weekEnd.toISOString()
+        });
+        // Query visits for the week
+        const visitsSnapshot = await admin.firestore().collection('visits')
+            .where('date', '>=', admin.firestore.Timestamp.fromDate(weekStart))
+            .where('date', '<=', admin.firestore.Timestamp.fromDate(weekEnd))
+            .get();
+        if (visitsSnapshot.empty) {
+            functions.logger.info(`No visits found for week ${weekId}`);
+            return;
+        }
+        // Initialize counters
+        const counts = {
+            total: 0,
+            byStatus: {
+                scheduled: 0,
+                complete: 0,
+                cancelled: 0,
+                pending: 0,
+                incomplete: 0
+            },
+            byRole: {
+                em: 0,
+                visitor: 0
+            },
+            byQuality: {
+                excellent: 0,
+                good: 0,
+                average: 0,
+                poor: 0,
+                objectivesMet: 0,
+                partiallyMet: 0,
+                notMet: 0,
+                redFlag: 0,
+                none: 0
+            },
+            byPersonMet: {
+                primaryPoc: 0,
+                projectCoordinator: 0,
+                staff: 0,
+                none: 0
+            },
+            byVisitHours: {
+                full: 0,
+                half: 0,
+                dropIn: 0,
+                special: 0,
+                none: 0
+            }
+        };
+        // User and CCI tracking with detailed aggregation
+        const uniqueUsers = new Set();
+        const cciStats = new Map();
+        const userStats = new Map();
+        // Process each visit
+        visitsSnapshot.forEach(doc => {
+            var _a, _b, _c, _d, _e, _f, _g;
+            const visit = doc.data();
+            counts.total++;
+            // Status counts
+            const status = ((_a = visit.status) === null || _a === void 0 ? void 0 : _a.toLowerCase()) || 'scheduled';
+            if (status in counts.byStatus) {
+                counts.byStatus[status]++;
+            }
+            // Role counts
+            if (visit.filledBy === 'EM') {
+                counts.byRole.em++;
+            }
+            else {
+                counts.byRole.visitor++;
+            }
+            // Quality counts
+            const quality = ((_b = visit.quality) === null || _b === void 0 ? void 0 : _b.toLowerCase()) || 'none';
+            if (quality === 'objectives met')
+                counts.byQuality.objectivesMet++;
+            else if (quality === 'partially met/slow pace')
+                counts.byQuality.partiallyMet++;
+            else if (quality === 'not met')
+                counts.byQuality.notMet++;
+            else if (quality === 'red flag')
+                counts.byQuality.redFlag++;
+            else if (quality === 'excellent')
+                counts.byQuality.excellent++;
+            else if (quality === 'good')
+                counts.byQuality.good++;
+            else if (quality === 'average')
+                counts.byQuality.average++;
+            else if (quality === 'poor')
+                counts.byQuality.poor++;
+            else
+                counts.byQuality.none++;
+            // Person met counts
+            const personMet = ((_c = visit.personMet) === null || _c === void 0 ? void 0 : _c.toLowerCase()) || 'none';
+            if (personMet === 'primary poc')
+                counts.byPersonMet.primaryPoc++;
+            else if (personMet === 'project coordinator')
+                counts.byPersonMet.projectCoordinator++;
+            else if (personMet === 'staff')
+                counts.byPersonMet.staff++;
+            else
+                counts.byPersonMet.none++;
+            // Visit hours counts
+            const visitHours = ((_d = visit.visitHours) === null || _d === void 0 ? void 0 : _d.toLowerCase()) || 'none';
+            if (visitHours === 'full')
+                counts.byVisitHours.full++;
+            else if (visitHours === 'half')
+                counts.byVisitHours.half++;
+            else if (visitHours === 'drop-in')
+                counts.byVisitHours.dropIn++;
+            else if (visitHours === 'special')
+                counts.byVisitHours.special++;
+            else
+                counts.byVisitHours.none++;
+            // Track unique users and detailed user stats
+            if (visit.filledByUid) {
+                uniqueUsers.add(visit.filledByUid);
+                // Get or create user stats
+                let userStat = userStats.get(visit.filledByUid);
+                if (!userStat) {
+                    userStat = {
+                        uid: visit.filledByUid,
+                        email: visit.filledByEmail || null,
+                        username: visit.filledByUsername || null,
+                        role: visit.filledBy || null,
+                        visitCount: 0,
+                        visitsByStatus: {},
+                        visitsByRole: { em: 0, visitor: 0 },
+                        visitsByQuality: {},
+                        visitsByPersonMet: {},
+                        visitsByHours: {},
+                        cciIds: new Set(),
+                        firstVisitDate: null,
+                        lastVisitDate: null
+                    };
+                    userStats.set(visit.filledByUid, userStat);
+                }
+                // Update user stats
+                userStat.visitCount++;
+                // Status breakdown
+                userStat.visitsByStatus[status] = (userStat.visitsByStatus[status] || 0) + 1;
+                // Role breakdown
+                if (visit.filledBy === 'EM') {
+                    userStat.visitsByRole.em++;
+                }
+                else {
+                    userStat.visitsByRole.visitor++;
+                }
+                // Quality breakdown
+                userStat.visitsByQuality[quality] = (userStat.visitsByQuality[quality] || 0) + 1;
+                // Person met breakdown
+                userStat.visitsByPersonMet[personMet] = (userStat.visitsByPersonMet[personMet] || 0) + 1;
+                // Hours breakdown
+                userStat.visitsByHours[visitHours] = (userStat.visitsByHours[visitHours] || 0) + 1;
+                // CCI tracking
+                if (visit.cci_id) {
+                    userStat.cciIds.add(visit.cci_id);
+                }
+                // Date tracking
+                const visitDate = ((_e = visit.date) === null || _e === void 0 ? void 0 : _e.toDate) ? visit.date.toDate() : new Date(visit.date);
+                if (!userStat.firstVisitDate || visitDate < userStat.firstVisitDate) {
+                    userStat.firstVisitDate = visitDate;
+                }
+                if (!userStat.lastVisitDate || visitDate > userStat.lastVisitDate) {
+                    userStat.lastVisitDate = visitDate;
+                }
+            }
+            // Track CCI stats
+            if (visit.cci_id && visit.cci_name) {
+                const existing = cciStats.get(visit.cci_id);
+                const cciCity = ((_g = (_f = visit.cci_city) !== null && _f !== void 0 ? _f : visit.cciCity) !== null && _g !== void 0 ? _g : null);
+                if (existing) {
+                    existing.count++;
+                    if (!existing.cciCity && cciCity) {
+                        existing.cciCity = cciCity;
+                    }
+                }
+                else {
+                    cciStats.set(visit.cci_id, {
+                        cciName: visit.cci_name,
+                        cciCity,
+                        count: 1
+                    });
+                }
+            }
+        });
+        // Fetch user data from users collection to populate email and username
+        functions.logger.info('Fetching user data for user statistics...');
+        const userIds = Array.from(uniqueUsers);
+        const userDataMap = new Map();
+        // Fetch users in batches to avoid Firestore query limits
+        const batchSize = 100;
+        for (let i = 0; i < userIds.length; i += batchSize) {
+            const batch = userIds.slice(i, i + batchSize);
+            const usersSnapshot = await admin.firestore()
+                .collection('users')
+                .where(admin.firestore.FieldPath.documentId(), 'in', batch)
+                .get();
+            usersSnapshot.forEach(userDoc => {
+                const userData = userDoc.data();
+                userDataMap.set(userDoc.id, {
+                    email: userData.email || null,
+                    username: userData.username || userData.displayName || null, // Use displayName as fallback for username
+                    role: userData.role || null
+                });
+            });
+        }
+        // Update user stats with fetched user data
+        userStats.forEach((userStat, uid) => {
+            const userData = userDataMap.get(uid);
+            if (userData) {
+                userStat.email = userData.email;
+                userStat.username = userData.username;
+                userStat.role = userData.role; // Update role from users collection
+            }
+        });
+        functions.logger.info(`Fetched user data for ${userDataMap.size} users`);
+        // Debug: Log sample user data to verify it's being fetched correctly
+        const sampleUserData = Array.from(userDataMap.entries()).slice(0, 3);
+        functions.logger.info('Sample user data fetched:', sampleUserData.map(([uid, data]) => ({
+            uid,
+            email: data.email,
+            username: data.username,
+            role: data.role
+        })));
+        // Create per-user statistics organized by email/username
+        const perUserStats = new Map();
+        // Process user stats into per-user format
+        userStats.forEach((user, uid) => {
+            const userData = {
+                uid: user.uid,
+                email: user.email,
+                username: user.username,
+                role: user.role,
+                weeklyStats: {
+                    totalVisits: user.visitCount,
+                    completeVisits: user.visitsByStatus.complete || 0,
+                    scheduledVisits: user.visitsByStatus.scheduled || 0,
+                    cancelledVisits: user.visitsByStatus.cancelled || 0,
+                    visitsByQuality: user.visitsByQuality,
+                    visitsByPersonMet: user.visitsByPersonMet,
+                    visitsByHours: user.visitsByHours,
+                    cciIds: Array.from(user.cciIds),
+                    cciCount: user.cciIds.size
+                },
+                firstVisitDate: user.firstVisitDate,
+                lastVisitDate: user.lastVisitDate
+            };
+            // Create entries for email (primary identifier)
+            if (user.email) {
+                perUserStats.set(user.email, userData);
+            }
+            // Create entry for username if available and different from email
+            if (user.username && user.username !== user.email) {
+                perUserStats.set(user.username, userData);
+            }
+            // Always create an entry with UID as fallback
+            perUserStats.set(uid, userData);
+        });
+        // Debug: Log the perUserStats keys to verify they're being created correctly
+        const perUserStatsKeys = Array.from(perUserStats.keys());
+        functions.logger.info(`Created perUserStats with ${perUserStatsKeys.length} keys:`, perUserStatsKeys.slice(0, 10));
+        // Get detailed user stats
+        const userBreakdown = {
+            totalUsers: uniqueUsers.size,
+            activeUsers: uniqueUsers.size, // All users who created visits this week
+            newUsers: 0, // Would need historical data to calculate
+            usersByRole: {
+                em: Array.from(userStats.values()).filter(u => u.role === 'EM').length,
+                visitor: Array.from(userStats.values()).filter(u => u.role === 'Visitor').length,
+                admin: Array.from(userStats.values()).filter(u => u.role === 'Admin').length
+            },
+            // Per-user statistics organized by email/username
+            perUserStats: Object.fromEntries(Array.from(perUserStats.entries()).map(([userKey, userData]) => [
+                userKey,
+                {
+                    uid: userData.uid,
+                    email: userData.email,
+                    username: userData.username,
+                    role: userData.role,
+                    weeklyStats: userData.weeklyStats,
+                    firstVisitDate: userData.firstVisitDate ? admin.firestore.Timestamp.fromDate(userData.firstVisitDate) : null,
+                    lastVisitDate: userData.lastVisitDate ? admin.firestore.Timestamp.fromDate(userData.lastVisitDate) : null
+                }
+            ])),
+            // Top users by visit count (for backward compatibility)
+            topUsers: Array.from(userStats.values())
+                .sort((a, b) => b.visitCount - a.visitCount)
+                .slice(0, 10) // Top 10 users by visit count
+                .map(user => ({
+                uid: user.uid,
+                email: user.email,
+                username: user.username,
+                role: user.role,
+                visitCount: user.visitCount,
+                visitsByStatus: user.visitsByStatus,
+                visitsByQuality: user.visitsByQuality,
+                cciCount: user.cciIds.size,
+                firstVisitDate: user.firstVisitDate ? admin.firestore.Timestamp.fromDate(user.firstVisitDate) : null,
+                lastVisitDate: user.lastVisitDate ? admin.firestore.Timestamp.fromDate(user.lastVisitDate) : null
+            })),
+            // Detailed user stats by UID (for backward compatibility)
+            userStats: Object.fromEntries(Array.from(userStats.entries()).map(([uid, user]) => [
+                uid,
+                {
+                    email: user.email,
+                    username: user.username,
+                    role: user.role,
+                    visitCount: user.visitCount,
+                    visitsByStatus: user.visitsByStatus,
+                    visitsByRole: user.visitsByRole,
+                    visitsByQuality: user.visitsByQuality,
+                    visitsByPersonMet: user.visitsByPersonMet,
+                    visitsByHours: user.visitsByHours,
+                    cciIds: Array.from(user.cciIds),
+                    cciCount: user.cciIds.size,
+                    firstVisitDate: user.firstVisitDate ? admin.firestore.Timestamp.fromDate(user.firstVisitDate) : null,
+                    lastVisitDate: user.lastVisitDate ? admin.firestore.Timestamp.fromDate(user.lastVisitDate) : null
+                }
+            ]))
+        };
+        // Get CCI breakdown
+        const cciBreakdown = {
+            totalCcis: cciStats.size,
+            activeCcis: cciStats.size,
+            visitsByCci: Object.fromEntries(Array.from(cciStats.entries()).map(([cciId, stats]) => {
+                var _a;
+                return [
+                    cciId,
+                    {
+                        cciName: stats.cciName,
+                        cciCity: (_a = stats.cciCity) !== null && _a !== void 0 ? _a : null,
+                        visitCount: stats.count
+                    }
+                ];
+            }))
+        };
+        // Create the insight document
+        const insightDoc = {
+            dataType: 'weekly_visits_count',
+            data: {
+                weekId,
+                weekStart: admin.firestore.Timestamp.fromDate(weekStart),
+                weekEnd: admin.firestore.Timestamp.fromDate(weekEnd),
+                counts,
+                userBreakdown,
+                cciBreakdown
+            },
+            lastUpdated: admin.firestore.FieldValue.serverTimestamp(),
+            lastUpdatedDisplay: new Date().toLocaleString('en-IN', {
+                timeZone: 'Asia/Kolkata',
+                year: 'numeric',
+                month: 'short',
+                day: 'numeric',
+                hour: '2-digit',
+                minute: '2-digit',
+                second: '2-digit'
+            }),
+            createdAt: admin.firestore.FieldValue.serverTimestamp(),
+            version: 1
+        };
+        // Store in Firestore
+        await admin.firestore().collection('insight_data').doc(`weekly_visits_count_${weekId}`).set(insightDoc);
+        // Log per-user statistics summary
+        const perUserStatsSummary = Object.entries(userBreakdown.perUserStats).slice(0, 5).map(([userKey, userData]) => ({
+            userKey,
+            email: userData.email,
+            username: userData.username,
+            role: userData.role,
+            weeklyVisits: userData.weeklyStats.totalVisits,
+            completeVisits: userData.weeklyStats.completeVisits
+        }));
+        functions.logger.info(`Successfully aggregated weekly visits for week ${weekId}`, {
+            totalVisits: counts.total,
+            uniqueUsers: uniqueUsers.size,
+            uniqueCcis: cciStats.size,
+            userDataFetched: userDataMap.size,
+            userBreakdown: {
+                totalUsers: userBreakdown.totalUsers,
+                emUsers: userBreakdown.usersByRole.em,
+                visitorUsers: userBreakdown.usersByRole.visitor,
+                adminUsers: userBreakdown.usersByRole.admin,
+                topUser: userBreakdown.topUsers[0] ? {
+                    uid: userBreakdown.topUsers[0].uid,
+                    email: userBreakdown.topUsers[0].email,
+                    username: userBreakdown.topUsers[0].username,
+                    visitCount: userBreakdown.topUsers[0].visitCount
+                } : null
+            },
+            perUserStatsSummary: perUserStatsSummary,
+            totalPerUserStats: Object.keys(userBreakdown.perUserStats).length,
+            samplePerUserStats: Object.entries(userBreakdown.perUserStats).slice(0, 3).map(([key, data]) => ({
+                userKey: key,
+                email: data.email,
+                username: data.username,
+                role: data.role,
+                totalVisits: data.weeklyStats.totalVisits
+            }))
+        });
+    }
+    catch (error) {
+        functions.logger.error('Error aggregating weekly visits count:', error);
+        throw error;
+    }
+}
+/**
+ * Check if insights collection exists and has data
+ */
+async function checkInsightsCollectionExists() {
+    try {
+        const snapshot = await admin.firestore().collection('insight_data')
+            .where('dataType', '==', 'weekly_visits_count')
+            .limit(1)
+            .get();
+        return !snapshot.empty;
+    }
+    catch (error) {
+        functions.logger.error('Error checking insights collection:', error);
+        return false;
+    }
+}
+/**
+ * Get the date range for initial aggregation (last 12 months)
+ */
+function getInitialAggregationDateRange() {
+    const dates = [];
+    const now = new Date();
+    // Go back 12 months to ensure we have historical data
+    for (let i = 0; i < 52; i++) { // 52 weeks = ~12 months
+        const date = new Date(now);
+        date.setDate(date.getDate() - (i * 7)); // Go back by weeks
+        dates.push(date);
+    }
+    return dates;
+}
+/**
+ * Main Cloud Function - runs daily at 12:00 AM IST
+ */
+exports.insightDataAggregator = functions.pubsub
+    .schedule('0 18 * * *') // 12:00 AM IST = 6:30 PM UTC (adjust as needed)
+    .timeZone('Asia/Kolkata')
+    .onRun(async (context) => {
+    functions.logger.info('Starting insight data aggregation', {
+        currentTime: new Date().toISOString()
+    });
+    try {
+        // Check if insights collection exists
+        const insightsExist = await checkInsightsCollectionExists();
+        if (!insightsExist) {
+            functions.logger.info('Insights collection does not exist. Running initial aggregation for historical data...');
+            // Get date range for initial aggregation
+            const datesToAggregate = getInitialAggregationDateRange();
+            // Aggregate data for each week in the range
+            for (const date of datesToAggregate) {
+                try {
+                    await aggregateWeeklyVisitsCount(date);
+                }
+                catch (error) {
+                    functions.logger.warn(`Failed to aggregate data for date ${date.toISOString()}:`, error);
+                    // Continue with other dates even if one fails
+                }
+            }
+            functions.logger.info(`Initial aggregation completed for ${datesToAggregate.length} weeks`);
+        }
+        else {
+            functions.logger.info('Insights collection exists. Running daily aggregation...');
+            // Regular daily aggregation - get the date for which to aggregate (previous day to ensure all data is available)
+            const targetDate = new Date();
+            targetDate.setDate(targetDate.getDate() - 1);
+            // Aggregate weekly visits count for the week containing the target date
+            await aggregateWeeklyVisitsCount(targetDate);
+        }
+        // You can add more aggregation functions here
+        // await aggregateMonthlySummary(targetDate);
+        // await aggregateYearlyTrends(targetDate);
+        functions.logger.info('Insight data aggregation completed successfully');
+    }
+    catch (error) {
+        functions.logger.error('Insight data aggregation failed:', error);
+        throw error;
+    }
+});
 //# sourceMappingURL=index.js.map
