@@ -73,15 +73,15 @@ export function DateRangePicker({ value, onChange, className }: Props) {
           {label}
         </Button>
       </PopoverTrigger>
-      <PopoverContent className="w-80 p-4 z-50 bg-white border border-gray-200 shadow-lg" align="start">
-        <div className="space-y-4 bg-white">
+      <PopoverContent className="w-80 p-4 z-50 bg-[hsl(var(--card))] border border-border shadow-lg" align="start">
+        <div className="space-y-4">
           <div className="space-y-2">
             <label className="text-sm font-medium">From Date</label>
             <input
               type="date"
               value={formatDateForInput(tempRange.from)}
               onChange={(e) => handleDateChange('from', e.target.value)}
-              className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  className="w-full px-3 py-2 border border-border rounded-md bg-[hsl(var(--card))] text-sm focus:outline-none focus:ring-2 focus:ring-ring"
             />
           </div>
           
@@ -91,7 +91,7 @@ export function DateRangePicker({ value, onChange, className }: Props) {
               type="date"
               value={formatDateForInput(tempRange.to)}
               onChange={(e) => handleDateChange('to', e.target.value)}
-              className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  className="w-full px-3 py-2 border border-border rounded-md bg-[hsl(var(--card))] text-sm focus:outline-none focus:ring-2 focus:ring-ring"
             />
           </div>
           
@@ -119,5 +119,4 @@ export function DateRangePicker({ value, onChange, className }: Props) {
 }
 
 export default DateRangePicker
-
 

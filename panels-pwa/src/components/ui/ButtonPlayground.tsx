@@ -104,7 +104,7 @@ export const ButtonPlayground: React.FC<ButtonPlaygroundProps> = ({ className })
         </div>
         
         {/* Live Preview */}
-        <div className="mt-4 p-4 bg-white rounded border">
+        <div className="mt-4 p-4 bg-[hsl(var(--card))] rounded border">
           <h3 className="text-sm font-medium mb-2">Live Preview</h3>
           <Button 
             variant={selectedVariant as any}

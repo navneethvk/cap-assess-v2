@@ -96,7 +96,7 @@ export const SegmentedTabs: React.FC<SegmentedTabsProps> = ({ items, value, onVa
       onTouchStart={onTouchStart}
       onTouchEnd={onTouchEnd}
       className={cn(
-        'relative w-full max-w-md mx-auto rounded-full bg-white/90 backdrop-blur border border-[hsl(var(--border))] shadow-[inset_0_1px_0_rgba(255,255,255,0.8),0_6px_20px_rgba(0,0,0,0.06)]',
+        'relative w-full max-w-md mx-auto rounded-full bg-[hsl(var(--card))] backdrop-blur border border-[hsl(var(--border))] shadow-[inset_0_1px_0_rgba(255,255,255,0.12),0_6px_20px_rgba(0,0,0,0.06)]',
         'px-1 py-1 flex items-center gap-1 overflow-hidden',
         className,
       )}
@@ -127,7 +127,7 @@ export const SegmentedTabs: React.FC<SegmentedTabsProps> = ({ items, value, onVa
             <span
               className={cn(
                 'pointer-events-none absolute inset-0 rounded-full opacity-0 transition-opacity duration-150',
-                active ? 'bg-white/20' : 'bg-black/10',
+                active ? 'bg-white/20 dark:bg-primary/20' : 'bg-black/10 dark:bg-white/10',
                 'group-active:opacity-100',
               )}
             />

@@ -12,7 +12,7 @@ export const SearchInput: React.FC<SearchInputProps> = ({ className, onChangeVal
         type="search"
         className={cn(
           'w-full h-10 rounded-full border px-10 text-sm',
-          'bg-white placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring',
+          'bg-[hsl(var(--card))] placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring',
         )}
         onChange={(e) => onChangeValue?.(e.target.value)}
         {...props}
@@ -44,4 +44,3 @@ export const SearchInput: React.FC<SearchInputProps> = ({ className, onChangeVal
     </div>
   )
 }
-

@@ -1,0 +1,130 @@
+
+  service cloud.firestore {
+    match /databases/{database}/documents {
+
+      // Helper function to check if a user has a valid role and is not deactivated
+      function isAuthenticatedAndAuthorized() {
+        return request.auth != null &&
+              // Role claim optional; if present, must not be "Pending"
+              (request.auth.token.role == null || request.auth.token.role is string) &&
+              (request.auth.token.role == null || request.auth.token.role != "Pending") &&
+              // Status claim optional; if present, must not be "deactivated"
+              (request.auth.token.status == null || request.auth.token.status != "deactivated");
+      }
+
+      // Helper: normalized role (defaults to Visitor when not set)
+      function normalizedRole() {
+        return request.auth != null && request.auth.token.role is string
+              ? request.auth.token.role
+              : "Visitor";
+      }
+
+      // Helper function to check if user is admin
+      function isAdmin() {
+        return request.auth != null && request.auth.token.role == "Admin";
+      }
+
+      // Helper function to check if user is authenticated
+      function isAuthenticated() {
+        return request.auth != null;
+      }
+
+      // Helper function to check if user is EM for a specific CCI
+      function isEMForCCI(userId, cciId) {
+        return exists(/databases/$(database)/documents/cci_user_links/$(userId)) &&
+               cciId in get(/databases/$(database)/documents/cci_user_links/$(userId)).data.cci_id;
+      }
+
+      // Rule for the 'users' collection
+      match /users/{userId} {
+        // Users can read their own profile
+        allow read: if request.auth != null && request.auth.uid == userId;
+
+        // Admins can read any user's profile
+        allow read: if isAdmin();
+
+        // Users can update their own profile, but NOT change their role or status
+        allow update: if request.auth != null && request.auth.uid == userId && request.auth.token.role != "Pending" &&
+                      (!("role" in request.resource.data) || request.resource.data.role == resource.data.role) &&
+                      (!("status" in request.resource.data) || request.resource.data.status == resource.data.status);
+
+        // Admins can update any user's profile, including their role and status
+        allow update: if isAdmin();
+      }
+
+      // Rule for the 'ccis' collection
+      match /ccis/{cciId} {
+        // Admins can always read, write, create, delete CCIs
+        allow read, write, create, delete: if isAdmin();
+        
+        // Any authenticated user may read CCIs (used by visit creation)
+        allow read: if isAuthenticated();
+      }
+
+      // Rule for the 'cci_user_links' collection
+      match /cci_user_links/{userId} {
+        // Admins can always read and write to the cci_user_links collection
+        allow read, write, create, delete: if isAdmin();
+        
+        // Users can read their own assignments
+        allow read: if request.auth != null && request.auth.uid == userId;
+      }
+
+      // Rule for the 'visits' collection
+      match /visits/{visitId} {
+        // Create a visit:
+        // - Owner may create their own visit
+        // - Admin may bulk-import on behalf of any user
+        allow create: if isAdmin() || (request.auth != null && request.resource.data.filledByUid == request.auth.uid);
+
+        // Read own visits, or any visit if Admin
+        // Note: CCI-based filtering is handled at application level for better performance
+        allow read: if isAdmin() || (request.auth != null && resource.data.filledByUid == request.auth.uid);
+
+        // Owner or admin may update their visit.
+        allow update: if isAdmin() || (request.auth != null && resource.data.filledByUid == request.auth.uid);
+
+        // Only admins can delete visits
+        allow delete: if isAdmin();
+
+        // Rule for the 'events' subcollection (version history)
+        match /events/{eventId} {
+          // Create events: Only visit owner or admin can create version history events
+          allow create: if isAdmin() || (request.auth != null && get(/databases/$(database)/documents/visits/$(visitId)).data.filledByUid == request.auth.uid);
+          
+          // Read events: Only visit owner or admin can read version history
+          allow read: if isAdmin() || (request.auth != null && get(/databases/$(database)/documents/visits/$(visitId)).data.filledByUid == request.auth.uid);
+          
+          // Update events: Only admin can update version history (for corrections)
+          allow update: if isAdmin();
+          
+          // Delete events: Only admin can delete version history
+          allow delete: if isAdmin();
+        }
+        
+        // Rule for the 'snapshots' subcollection (version snapshots)
+        match /snapshots/{snapshotId} {
+          // Create snapshots: Only admin can create version snapshots (via Cloud Functions)
+          allow create: if isAdmin();
+          
+          // Read snapshots: Only visit owner or admin can read version snapshots
+          allow read: if isAdmin() || (request.auth != null && get(/databases/$(database)/documents/visits/$(visitId)).data.filledByUid == request.auth.uid);
+          
+          // Update snapshots: Only admin can update version snapshots
+          allow update: if isAdmin();
+          
+          // Delete snapshots: Only admin can delete version snapshots
+          allow delete: if isAdmin();
+        }
+      }
+
+      // Default rule for all other documents/collections.
+      // Only allow read/write if the user is authenticated AND their role is NOT "Pending" AND their status is NOT "deactivated".
+      // And now, also ensure the 'role' claim exists and is a string.
+      match /{document=**} {
+        // Restrictive default: deny access to any document not explicitly allowed above
+        // This prevents the catch-all rule from allowing access to sensitive subcollections
+        allow read, write: if false;
+      }
+    }
+  }

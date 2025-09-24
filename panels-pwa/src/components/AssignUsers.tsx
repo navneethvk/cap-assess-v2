@@ -458,7 +458,7 @@ const AssignUsers: React.FC = () => {
                             value={cciSearch}
                             onChange={(e) => setCciSearch(e.target.value)}
                             placeholder="Search CCIs"
-                            className="w-full h-full pl-9 pr-8 rounded-full border border-[hsl(var(--border))] bg-white/90 outline-none text-sm focus:ring-2 focus:ring-ring"
+                            className="w-full h-full pl-9 pr-8 rounded-full border border-[hsl(var(--border))] bg-[hsl(var(--card))] outline-none text-sm focus:ring-2 focus:ring-ring"
                           />
                           <button
                             type="button"
