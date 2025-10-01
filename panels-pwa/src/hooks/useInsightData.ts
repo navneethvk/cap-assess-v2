@@ -31,21 +31,39 @@ export const useInsightData = (options: InsightQueryOptions = {}) => {
       setLoading(true);
       setError(null);
 
+      // Map orderBy field to actual Firestore field path
+      const getFirestoreFieldPath = (field: string) => {
+        switch (field) {
+          case 'weekStart':
+            return 'data.weekStart';
+          case 'monthStart':
+            return 'data.monthStart';
+          case 'year':
+            return 'data.year';
+          case 'lastUpdated':
+            return 'lastUpdated';
+          default:
+            return 'lastUpdated';
+        }
+      };
+
+      const firestoreOrderByField = getFirestoreFieldPath(orderByField);
+
       // Build query
       let q = query(
         collection(db, 'insight_data'),
         where('dataType', '==', dataType),
-        orderBy(orderByField, orderDirection),
+        orderBy(firestoreOrderByField, orderDirection),
         limit(queryLimit)
       );
 
       // Add date filters if provided
       if (startDate || endDate) {
         if (startDate) {
-          q = query(q, where(orderByField, '>=', Timestamp.fromDate(startDate)));
+          q = query(q, where(firestoreOrderByField, '>=', Timestamp.fromDate(startDate)));
         }
         if (endDate) {
-          q = query(q, where(orderByField, '<=', Timestamp.fromDate(endDate)));
+          q = query(q, where(firestoreOrderByField, '<=', Timestamp.fromDate(endDate)));
         }
       }
 
@@ -170,13 +188,32 @@ export const useWeeklyVisitsCount = (weeks: number = 12) => {
     dataType: 'weekly_visits_count',
     startDate,
     endDate,
-    orderBy: 'data.weekStart',
+    orderBy: 'weekStart',
     orderDirection: 'desc',
     limit: weeks
   });
 
   // Process data for easier consumption
   const processedData = useMemo(() => {
+    const transformPerUserStats = (stats?: Record<string, any>) =>
+      Object.fromEntries(
+        Object.entries(stats || {}).map(([key, userData]) => [
+          key,
+          {
+            ...userData,
+            firstVisitDate: userData.firstVisitDate?.toDate ? userData.firstVisitDate.toDate() : userData.firstVisitDate || null,
+            lastVisitDate: userData.lastVisitDate?.toDate ? userData.lastVisitDate.toDate() : userData.lastVisitDate || null
+          }
+        ])
+      );
+
+    const transformPerUserList = (list?: Array<any>) =>
+      (list || []).map(userData => ({
+        ...userData,
+        firstVisitDate: userData.firstVisitDate?.toDate ? userData.firstVisitDate.toDate() : userData.firstVisitDate || null,
+        lastVisitDate: userData.lastVisitDate?.toDate ? userData.lastVisitDate.toDate() : userData.lastVisitDate || null
+      }));
+
     return data.map(doc => ({
       weekId: doc.data.weekId,
       weekStart: doc.data.weekStart.toDate(),
@@ -184,16 +221,11 @@ export const useWeeklyVisitsCount = (weeks: number = 12) => {
       counts: doc.data.counts,
           userBreakdown: {
             ...doc.data.userBreakdown,
-            perUserStats: Object.fromEntries(
-              Object.entries(doc.data.userBreakdown.perUserStats || {}).map(([userKey, userData]) => [
-                userKey,
-                {
-                  ...userData,
-                  firstVisitDate: userData.firstVisitDate?.toDate() || null,
-                  lastVisitDate: userData.lastVisitDate?.toDate() || null
-                }
-              ])
-            ),
+            perUserStats: transformPerUserStats(doc.data.userBreakdown.perUserStats),
+            perUserStatsByUid: doc.data.userBreakdown.perUserStatsByUid
+              ? transformPerUserStats(doc.data.userBreakdown.perUserStatsByUid)
+              : undefined,
+            perUserStatsList: transformPerUserList(doc.data.userBreakdown.perUserStatsList),
             topUsers: doc.data.userBreakdown.topUsers?.map(user => ({
               ...user,
               firstVisitDate: user.firstVisitDate?.toDate() || null,
@@ -249,110 +281,116 @@ export const usePerUserStats = (weeks: number = 12) => {
     let roleDistribution = { em: 0, visitor: 0, admin: 0 };
 
     weeklyData.forEach(week => {
-      if (week.userBreakdown?.perUserStats) {
-        Object.entries(week.userBreakdown.perUserStats).forEach(([userKey, userData]) => {
-          const email = userData.email;
-          const username = userData.username;
-          
-          // Track by email if available
-          if (email) {
-            if (!usersByEmail.has(email)) {
-              usersByEmail.set(email, {
-                uid: userData.uid,
-                email: userData.email,
-                username: userData.username,
-                role: userData.role,
-                totalVisits: 0,
-                totalCompleteVisits: 0,
-                totalScheduledVisits: 0,
-                totalCancelledVisits: 0,
-                cciCount: 0,
-                firstVisitDate: null,
-                lastVisitDate: null,
-                weeklyBreakdown: []
-              });
-            }
-
-            const user = usersByEmail.get(email);
-            user.totalVisits += userData.weeklyStats.totalVisits;
-            user.totalCompleteVisits += userData.weeklyStats.completeVisits;
-            user.totalScheduledVisits += userData.weeklyStats.scheduledVisits;
-            user.totalCancelledVisits += userData.weeklyStats.cancelledVisits;
-            user.cciCount = Math.max(user.cciCount, userData.weeklyStats.cciCount);
-            
-            if (!user.firstVisitDate || (userData.firstVisitDate && userData.firstVisitDate < user.firstVisitDate)) {
-              user.firstVisitDate = userData.firstVisitDate;
-            }
-            if (!user.lastVisitDate || (userData.lastVisitDate && userData.lastVisitDate > user.lastVisitDate)) {
-              user.lastVisitDate = userData.lastVisitDate;
-            }
-
-            user.weeklyBreakdown.push({
-              weekId: week.weekId,
-              weekStart: week.weekStart,
-              weekEnd: week.weekEnd,
-              totalVisits: userData.weeklyStats.totalVisits,
-              completeVisits: userData.weeklyStats.completeVisits,
-              scheduledVisits: userData.weeklyStats.scheduledVisits,
-              cancelledVisits: userData.weeklyStats.cancelledVisits,
-              visitsByQuality: userData.weeklyStats.visitsByQuality,
-              visitsByPersonMet: userData.weeklyStats.visitsByPersonMet,
-              visitsByHours: userData.weeklyStats.visitsByHours,
-              cciIds: userData.weeklyStats.cciIds,
-              cciCount: userData.weeklyStats.cciCount
-            });
-          }
-
-          // Track by username if available and different from email
-          if (username && username !== email) {
-            if (!usersByUsername.has(username)) {
-              usersByUsername.set(username, {
-                uid: userData.uid,
-                email: userData.email,
-                username: userData.username,
-                role: userData.role,
-                totalVisits: 0,
-                totalCompleteVisits: 0,
-                totalScheduledVisits: 0,
-                totalCancelledVisits: 0,
-                cciCount: 0,
-                firstVisitDate: null,
-                lastVisitDate: null,
-                weeklyBreakdown: []
-              });
-            }
-
-            const user = usersByUsername.get(username);
-            user.totalVisits += userData.weeklyStats.totalVisits;
-            user.totalCompleteVisits += userData.weeklyStats.completeVisits;
-            user.totalScheduledVisits += userData.weeklyStats.scheduledVisits;
-            user.totalCancelledVisits += userData.weeklyStats.cancelledVisits;
-            user.cciCount = Math.max(user.cciCount, userData.weeklyStats.cciCount);
-            
-            if (!user.firstVisitDate || (userData.firstVisitDate && userData.firstVisitDate < user.firstVisitDate)) {
-              user.firstVisitDate = userData.firstVisitDate;
-            }
-            if (!user.lastVisitDate || (userData.lastVisitDate && userData.lastVisitDate > user.lastVisitDate)) {
-              user.lastVisitDate = userData.lastVisitDate;
-            }
-
-            user.weeklyBreakdown.push({
-              weekId: week.weekId,
-              weekStart: week.weekStart,
-              weekEnd: week.weekEnd,
-              totalVisits: userData.weeklyStats.totalVisits,
-              completeVisits: userData.weeklyStats.completeVisits,
-              scheduledVisits: userData.weeklyStats.scheduledVisits,
-              cancelledVisits: userData.weeklyStats.cancelledVisits,
-              visitsByQuality: userData.weeklyStats.visitsByQuality,
-              visitsByPersonMet: userData.weeklyStats.visitsByPersonMet,
-              visitsByHours: userData.weeklyStats.visitsByHours,
-              cciIds: userData.weeklyStats.cciIds,
-              cciCount: userData.weeklyStats.cciCount
-            });
-          }
-        });
+      if (!week.userBreakdown) {
+        return;
       }
+
+      const perUserEntries = Object.values(
+        week.userBreakdown.perUserStatsByUid ?? week.userBreakdown.perUserStats ?? {}
+      );
+
+      perUserEntries.forEach(userData => {
+        const email = userData.email;
+        const username = userData.username;
+
+        if (email) {
+          if (!usersByEmail.has(email)) {
+            usersByEmail.set(email, {
+              uid: userData.uid,
+              email: userData.email,
+              username: userData.username,
+              displayName: userData.displayName,
+              role: userData.role,
+              totalVisits: 0,
+              totalCompleteVisits: 0,
+              totalScheduledVisits: 0,
+              totalCancelledVisits: 0,
+              cciCount: 0,
+              firstVisitDate: null,
+              lastVisitDate: null,
+              weeklyBreakdown: []
+            });
+          }
+
+          const user = usersByEmail.get(email);
+          user.totalVisits += userData.weeklyStats.totalVisits;
+          user.totalCompleteVisits += userData.weeklyStats.completeVisits;
+          user.totalScheduledVisits += userData.weeklyStats.scheduledVisits;
+          user.totalCancelledVisits += userData.weeklyStats.cancelledVisits;
+          user.cciCount = Math.max(user.cciCount, userData.weeklyStats.cciCount);
+
+          if (!user.firstVisitDate || (userData.firstVisitDate && userData.firstVisitDate < user.firstVisitDate)) {
+            user.firstVisitDate = userData.firstVisitDate;
+          }
+          if (!user.lastVisitDate || (userData.lastVisitDate && userData.lastVisitDate > user.lastVisitDate)) {
+            user.lastVisitDate = userData.lastVisitDate;
+          }
+
+          user.weeklyBreakdown.push({
+            weekId: week.weekId,
+            weekStart: week.weekStart,
+            weekEnd: week.weekEnd,
+            totalVisits: userData.weeklyStats.totalVisits,
+            completeVisits: userData.weeklyStats.completeVisits,
+            scheduledVisits: userData.weeklyStats.scheduledVisits,
+            cancelledVisits: userData.weeklyStats.cancelledVisits,
+            visitsByQuality: userData.weeklyStats.visitsByQuality,
+            visitsByPersonMet: userData.weeklyStats.visitsByPersonMet,
+            visitsByHours: userData.weeklyStats.visitsByHours,
+            cciIds: userData.weeklyStats.cciIds,
+            cciCount: userData.weeklyStats.cciCount
+          });
+        }
+
+        if (username && username !== email) {
+          if (!usersByUsername.has(username)) {
+            usersByUsername.set(username, {
+              uid: userData.uid,
+              email: userData.email,
+              username: userData.username,
+              displayName: userData.displayName,
+              role: userData.role,
+              totalVisits: 0,
+              totalCompleteVisits: 0,
+              totalScheduledVisits: 0,
+              totalCancelledVisits: 0,
+              cciCount: 0,
+              firstVisitDate: null,
+              lastVisitDate: null,
+              weeklyBreakdown: []
+            });
+          }
+
+          const user = usersByUsername.get(username);
+          user.totalVisits += userData.weeklyStats.totalVisits;
+          user.totalCompleteVisits += userData.weeklyStats.completeVisits;
+          user.totalScheduledVisits += userData.weeklyStats.scheduledVisits;
+          user.totalCancelledVisits += userData.weeklyStats.cancelledVisits;
+          user.cciCount = Math.max(user.cciCount, userData.weeklyStats.cciCount);
+
+          if (!user.firstVisitDate || (userData.firstVisitDate && userData.firstVisitDate < user.firstVisitDate)) {
+            user.firstVisitDate = userData.firstVisitDate;
+          }
+          if (!user.lastVisitDate || (userData.lastVisitDate && userData.lastVisitDate > user.lastVisitDate)) {
+            user.lastVisitDate = userData.lastVisitDate;
+          }
+
+          user.weeklyBreakdown.push({
+            weekId: week.weekId,
+            weekStart: week.weekStart,
+            weekEnd: week.weekEnd,
+            totalVisits: userData.weeklyStats.totalVisits,
+            completeVisits: userData.weeklyStats.completeVisits,
+            scheduledVisits: userData.weeklyStats.scheduledVisits,
+            cancelledVisits: userData.weeklyStats.cancelledVisits,
+            visitsByQuality: userData.weeklyStats.visitsByQuality,
+            visitsByPersonMet: userData.weeklyStats.visitsByPersonMet,
+            visitsByHours: userData.weeklyStats.visitsByHours,
+            cciIds: userData.weeklyStats.cciIds,
+            cciCount: userData.weeklyStats.cciCount
+          });
+        }
+      });
 
       if (week.userBreakdown?.usersByRole) {
         roleDistribution = week.userBreakdown.usersByRole;

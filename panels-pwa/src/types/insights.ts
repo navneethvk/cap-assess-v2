@@ -12,6 +12,28 @@ export interface BaseInsightDoc {
   version: number;
 }
 
+export interface InsightPerUserStatsEntry {
+  uid: string;
+  email: string | null;
+  username: string | null;
+  displayName?: string | null;
+  label?: string;
+  role: string | null;
+  weeklyStats: {
+    totalVisits: number;
+    completeVisits: number;
+    scheduledVisits: number;
+    cancelledVisits: number;
+    visitsByQuality: { [key: string]: number };
+    visitsByPersonMet: { [key: string]: number };
+    visitsByHours: { [key: string]: number };
+    cciIds: string[];
+    cciCount: number;
+  };
+  firstVisitDate: Timestamp | null;
+  lastVisitDate: Timestamp | null;
+}
+
 /**
  * Weekly visits count insight data
  */
@@ -73,30 +95,17 @@ export interface WeeklyVisitsCountDoc extends BaseInsightDoc {
         admin: number;
       };
       // Per-user statistics organized by email/username for easy lookup
-      perUserStats: Record<string, {
-        uid: string;
-        email: string | null;
-        username: string | null;
-        role: string | null;
-        weeklyStats: {
-          totalVisits: number;
-          completeVisits: number;
-          scheduledVisits: number;
-          cancelledVisits: number;
-          visitsByQuality: { [key: string]: number };
-          visitsByPersonMet: { [key: string]: number };
-          visitsByHours: { [key: string]: number };
-          cciIds: string[];
-          cciCount: number;
-        };
-        firstVisitDate: Timestamp | null;
-        lastVisitDate: Timestamp | null;
-      }>;
+      perUserStats: Record<string, InsightPerUserStatsEntry>;
+      // Deterministic per-user statistics keyed by UID
+      perUserStatsByUid?: Record<string, InsightPerUserStatsEntry>;
+      // Sorted per-user statistics for easier rendering
+      perUserStatsList?: Array<InsightsPerUserListEntry>;
       // Top users by visit count (for backward compatibility)
       topUsers: Array<{
         uid: string;
         email: string | null;
         username: string | null;
+        displayName?: string | null;
         role: string | null;
         visitCount: number;
         visitsByStatus: { [key: string]: number };
@@ -133,6 +142,10 @@ export interface WeeklyVisitsCountDoc extends BaseInsightDoc {
       }>;
     };
   };
+}
+
+export interface InsightsPerUserListEntry extends InsightPerUserStatsEntry {
+  label: string;
 }
 
 /**

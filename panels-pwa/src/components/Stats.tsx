@@ -28,62 +28,63 @@ const Stats: React.FC = () => {
   const [showOnlyComplete, setShowOnlyComplete] = useState<boolean>(true)
 
   const participants = useMemo(() => {
-    // Use the new user-level aggregation data
     if (!weeklyData || weeklyData.length === 0) {
       return []
     }
-    
-    // Get the most recent week's data for user breakdown
-    const mostRecentWeek = weeklyData[0]
-    
-    
-    // Try to get participants from the new perUserStats structure first
-    if (mostRecentWeek?.userBreakdown?.perUserStats) {
-      const userEntries = Object.entries(mostRecentWeek.userBreakdown.perUserStats)
-        .filter(([_, userData]) => {
-          // Filter by current role mode
-          if (roleMode === 'EM' && userData.role === 'EM') return true
-          if (roleMode === 'Visitor' && userData.role === 'Visitor') return true
-          return false
-        })
-        .map(([userKey, userData]) => ({
+
+    const participantMap = new Map<string, {
+      uid: string
+      label: string
+      name: string | null
+      role: string | null
+    }>()
+
+    const addParticipant = (userData: any) => {
+      if (!userData?.uid) return
+      if (roleMode === 'EM' && userData.role !== 'EM') return
+      if (roleMode === 'Visitor' && userData.role !== 'Visitor') return
+
+      if (!participantMap.has(userData.uid)) {
+        participantMap.set(userData.uid, {
           uid: userData.uid,
-          label: userData.email || userData.username || userData.uid, // Use email as primary label
-          role: userData.role,
-          visitCount: showOnlyComplete 
-            ? userData.weeklyStats.completeVisits
-            : userData.weeklyStats.totalVisits
-        }))
-        .filter(user => user.visitCount > 0) // Only show users with visits
-        .sort((a, b) => b.visitCount - a.visitCount) // Sort by visit count
-        
-      if (userEntries.length > 0) {
-        return userEntries
+          label: userData.username || userData.displayName || userData.email || userData.uid,
+          name: userData.displayName || userData.email || null,
+          role: userData.role || null,
+        })
       }
     }
-    
-    // Fallback to topUsers structure
-    if (mostRecentWeek?.userBreakdown?.topUsers) {
-      return mostRecentWeek.userBreakdown.topUsers
-        .filter(user => {
-          // Filter by current role mode
-          if (roleMode === 'EM' && user.role === 'EM') return true
-          if (roleMode === 'Visitor' && user.role === 'Visitor') return true
-          return false
+
+    weeklyData.forEach(week => {
+      const perUserStatsList = week.userBreakdown?.perUserStatsList
+      if (perUserStatsList && perUserStatsList.length > 0) {
+        perUserStatsList.forEach(addParticipant)
+        return
+      }
+
+      const perUserStats = week.userBreakdown?.perUserStatsByUid
+        ?? week.userBreakdown?.perUserStats
+
+      if (perUserStats && Object.keys(perUserStats).length > 0) {
+        Object.values(perUserStats).forEach(addParticipant)
+      } else if (week.userBreakdown?.userStats) {
+        Object.entries(week.userBreakdown.userStats).forEach(([uid, userStat]) => {
+          if (roleMode === 'EM' && userStat.role !== 'EM') return
+          if (roleMode === 'Visitor' && userStat.role !== 'Visitor') return
+
+          if (!participantMap.has(uid)) {
+            participantMap.set(uid, {
+              uid,
+              label: userStat.username || userStat.email || uid,
+              name: userStat.email || null,
+              role: userStat.role || null,
+            })
+          }
         })
-        .map(user => ({
-          uid: user.uid,
-          label: user.email || user.username || user.uid, // Use email as primary label
-          role: user.role,
-          visitCount: showOnlyComplete 
-            ? (user.visitsByStatus?.complete || 0)
-            : user.visitCount
-        }))
-        .filter(user => user.visitCount > 0) // Only show users with visits
-    }
-    
-    return []
-  }, [weeklyData, roleMode, showOnlyComplete])
+      }
+    })
+
+    return Array.from(participantMap.values())
+  }, [weeklyData, roleMode])
 
   const rows = useMemo(() => {
     if (!weeklyData || error) {
@@ -130,24 +131,23 @@ const Stats: React.FC = () => {
       const userMap = new Map<string, number>()
       
       // Get user stats for this week using the new perUserStats structure
-      if (weekData.userBreakdown?.perUserStats) {
-        Object.entries(weekData.userBreakdown.perUserStats).forEach(([userKey, userData]) => {
-          // Filter by role if needed
-          if (roleMode === 'EM' && userData.role === 'EM') {
-            const visitCount = showOnlyComplete 
-              ? userData.weeklyStats.completeVisits
-              : userData.weeklyStats.totalVisits
-            if (visitCount > 0) {
-              userMap.set(userData.uid, visitCount)
-            }
-          } else if (roleMode === 'Visitor' && userData.role === 'Visitor') {
-            const visitCount = showOnlyComplete 
-              ? userData.weeklyStats.completeVisits
-              : userData.weeklyStats.totalVisits
-            if (visitCount > 0) {
-              userMap.set(userData.uid, visitCount)
-            }
+      const perUserStatsForWeek = weekData.userBreakdown?.perUserStatsByUid
+        ?? weekData.userBreakdown?.perUserStats
+
+      if (perUserStatsForWeek) {
+        Object.values(perUserStatsForWeek).forEach(userData => {
+          if (roleMode === 'EM' && userData.role !== 'EM') {
+            return
           }
+          if (roleMode === 'Visitor' && userData.role !== 'Visitor') {
+            return
+          }
+
+          const visitCount = showOnlyComplete
+            ? userData.weeklyStats.completeVisits
+            : userData.weeklyStats.totalVisits
+
+          userMap.set(userData.uid, visitCount)
         })
       }
       
@@ -159,16 +159,12 @@ const Stats: React.FC = () => {
             const visitCount = showOnlyComplete 
               ? (userStat.visitsByStatus.complete || 0)
               : userStat.visitCount
-            if (visitCount > 0) {
-              userMap.set(uid, visitCount)
-            }
+            userMap.set(uid, visitCount)
           } else if (roleMode === 'Visitor' && userStat.role === 'Visitor') {
             const visitCount = showOnlyComplete 
               ? (userStat.visitsByStatus.complete || 0)
               : userStat.visitCount
-            if (visitCount > 0) {
-              userMap.set(uid, visitCount)
-            }
+            userMap.set(uid, visitCount)
           }
         })
       }
@@ -189,6 +185,32 @@ const Stats: React.FC = () => {
     const weeks = Array.from(weekMeta.entries()).sort((a, b) => a[1].start.getTime() - b[1].start.getTime())
     return { counts, weeks }
   }, [weeklyData, roleMode, error])
+
+  const sortedParticipants = useMemo(() => {
+    return [...participants].sort((a, b) => {
+      const labelA = (a.label || a.uid).toLowerCase()
+      const labelB = (b.label || b.uid).toLowerCase()
+      if (labelA !== labelB) {
+        return labelA.localeCompare(labelB)
+      }
+      return a.uid.localeCompare(b.uid)
+    })
+  }, [participants])
+
+  const columnTotals = useMemo(() => {
+    return sortedParticipants.map(participant => {
+      const total = rows.weeks.reduce((sum: number, [key]) => {
+        const row = rows.counts.get(key) || new Map<string, number>()
+        return sum + (row.get(participant.uid) || 0)
+      }, 0)
+
+      return { uid: participant.uid, total }
+    })
+  }, [rows, sortedParticipants])
+
+  const overallTotal = useMemo(() => {
+    return columnTotals.reduce((sum, entry) => sum + entry.total, 0)
+  }, [columnTotals])
 
   if (error && !isLoading) {
     return (
@@ -291,12 +313,26 @@ const Stats: React.FC = () => {
                           <span className="hidden sm:inline">Week</span>
                           <span className="sm:hidden">W</span>
                         </div>
-                        {/* Individual participant headers not available with pre-aggregated data */}
-                        <div className="flex-shrink-0 w-24 sm:w-32 p-1 md:p-2 text-center text-xs md:text-sm font-medium text-muted-foreground border-r border-border">
-                          <div className="break-words text-[8px] md:text-xs">
-                            {roleMode} Total
+                        {sortedParticipants.map(participant => (
+                          <div
+                            key={participant.uid}
+                            className="flex-shrink-0 w-24 sm:w-28 lg:w-32 p-1 md:p-2 text-center text-[10px] md:text-xs font-medium text-muted-foreground border-r border-border"
+                            title={participant.uid === participant.label
+                              ? participant.uid
+                              : `${participant.label} (${participant.uid})`}
+                          >
+                            <div className="break-words leading-tight">
+                              <div className="text-[10px] md:text-xs font-semibold text-foreground">
+                                {participant.label}
+                              </div>
+                              {participant.uid !== participant.label && (
+                                <div className="mt-0.5 font-mono text-[9px] text-muted-foreground truncate">
+                                  {participant.uid}
+                                </div>
+                              )}
+                            </div>
                           </div>
-                        </div>
+                        ))}
                         <div className="flex-shrink-0 w-16 sm:w-20 p-1 md:p-2 text-center text-xs md:text-sm font-bold text-foreground bg-muted/50">
                           <span className="hidden sm:inline">Total</span>
                           <span className="sm:hidden">T</span>
@@ -309,18 +345,19 @@ const Stats: React.FC = () => {
                           <span className="hidden sm:inline">Total</span>
                           <span className="sm:hidden">T</span>
                         </div>
-                        {/* Individual participant columns not available with pre-aggregated data */}
-                        <div className="flex-shrink-0 w-24 sm:w-32 p-1 md:p-2 text-center text-xs md:text-sm font-bold text-foreground border-r border-border">
-                          {roleMode}
-                        </div>
+                        {columnTotals.map(({ uid, total }) => (
+                          <div
+                            key={uid}
+                            className="flex-shrink-0 w-24 sm:w-28 lg:w-32 p-1 md:p-2 text-center text-xs md:text-sm font-bold text-foreground border-r border-border"
+                          >
+                            {total || ''}
+                          </div>
+                        ))}
                         <div className="flex-shrink-0 w-16 sm:w-20 p-1 md:p-2 text-center text-xs md:text-sm font-bold text-foreground bg-muted/30">
-                          {rows.weeks.reduce((sum: number, [key]) => {
-                            const row = rows.counts.get(key) || new Map<string, number>()
-                            return sum + Array.from(row.values()).reduce((rowSum: number, count: unknown) => rowSum + (count as number), 0)
-                          }, 0).toString()}
+                          {overallTotal > 0 ? overallTotal : ''}
                         </div>
                       </div>
-                      
+
                       {/* Data Rows */}
                       {rows.weeks.map(([key, meta]) => {
                         const row = rows.counts.get(key) || new Map<string, number>()
@@ -336,10 +373,17 @@ const Stats: React.FC = () => {
                                 </span>
                               </div>
                             </div>
-                            {/* Individual participant data not available with pre-aggregated data */}
-                            <div className="flex-shrink-0 w-24 sm:w-32 p-1 md:p-2 text-center text-xs md:text-sm bg-card border-r border-border hover:bg-accent/40">
-                              {rowTotal > 0 ? rowTotal : ''}
-                            </div>
+                            {sortedParticipants.map(participant => {
+                              const participantCount = row.get(participant.uid) || 0
+                              return (
+                                <div
+                                  key={participant.uid}
+                                  className="flex-shrink-0 w-24 sm:w-28 lg:w-32 p-1 md:p-2 text-center text-xs md:text-sm bg-card border-r border-border hover:bg-accent/40"
+                                >
+                                  {participantCount || ''}
+                                </div>
+                              )
+                            })}
                             <div className="flex-shrink-0 w-16 sm:w-20 p-1 md:p-2 text-center text-xs md:text-sm font-bold bg-muted/40">
                               {rowTotal.toString()}
                             </div>
@@ -359,4 +403,3 @@ const Stats: React.FC = () => {
 }
 
 export default Stats
-

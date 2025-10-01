@@ -1,4 +1,15 @@
 "use strict";
+var __rest = (this && this.__rest) || function (s, e) {
+    var t = {};
+    for (var p in s) if (Object.prototype.hasOwnProperty.call(s, p) && e.indexOf(p) < 0)
+        t[p] = s[p];
+    if (s != null && typeof Object.getOwnPropertySymbols === "function")
+        for (var i = 0, p = Object.getOwnPropertySymbols(s); i < p.length; i++) {
+            if (e.indexOf(p[i]) < 0 && Object.prototype.propertyIsEnumerable.call(s, p[i]))
+                t[p[i]] = s[p[i]];
+        }
+    return t;
+};
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.insightDataAggregator = exports.clearVersionHistory = exports.captureVersionHistory = exports.panelExportVisitsCsv = exports.exportVisitsCsvNightly = exports.panelCreateUser = exports.updateUserRoleClaim = exports.createUserRecord = void 0;
 const functions = require("firebase-functions");
@@ -773,6 +784,7 @@ async function aggregateWeeklyVisitsCount(targetDate) {
                         uid: visit.filledByUid,
                         email: visit.filledByEmail || null,
                         username: visit.filledByUsername || null,
+                        displayName: visit.filledByUsername || visit.filledByEmail || null,
                         role: visit.filledBy || null,
                         visitCount: 0,
                         visitsByStatus: {},
@@ -835,82 +847,117 @@ async function aggregateWeeklyVisitsCount(targetDate) {
                 }
             }
         });
-        // Fetch user data from users collection to populate email and username
-        functions.logger.info('Fetching user data for user statistics...');
+        // Fetch user metadata to enrich stats with usernames/display names
         const userIds = Array.from(uniqueUsers);
         const userDataMap = new Map();
-        // Fetch users in batches to avoid Firestore query limits
-        const batchSize = 100;
-        for (let i = 0; i < userIds.length; i += batchSize) {
-            const batch = userIds.slice(i, i + batchSize);
-            const usersSnapshot = await admin.firestore()
-                .collection('users')
-                .where(admin.firestore.FieldPath.documentId(), 'in', batch)
-                .get();
-            usersSnapshot.forEach(userDoc => {
-                const userData = userDoc.data();
-                userDataMap.set(userDoc.id, {
-                    email: userData.email || null,
-                    username: userData.username || userData.displayName || null, // Use displayName as fallback for username
-                    role: userData.role || null
+        if (userIds.length > 0) {
+            const batchSize = 10; // Firestore 'in' queries allow max 10 values
+            for (let i = 0; i < userIds.length; i += batchSize) {
+                const batch = userIds.slice(i, i + batchSize);
+                const usersSnapshot = await admin
+                    .firestore()
+                    .collection('users')
+                    .where(admin.firestore.FieldPath.documentId(), 'in', batch)
+                    .get();
+                usersSnapshot.forEach(doc => {
+                    var _a, _b, _c, _d, _e;
+                    const data = doc.data();
+                    userDataMap.set(doc.id, {
+                        email: ((_a = data.email) !== null && _a !== void 0 ? _a : null),
+                        username: ((_b = data.username) !== null && _b !== void 0 ? _b : null),
+                        displayName: ((_d = (_c = data.displayName) !== null && _c !== void 0 ? _c : data.fullName) !== null && _d !== void 0 ? _d : null),
+                        role: ((_e = data.role) !== null && _e !== void 0 ? _e : null)
+                    });
                 });
+            }
+        }
+        if (userDataMap.size > 0) {
+            userStats.forEach((userStat, uid) => {
+                var _a, _b, _c;
+                const metadata = userDataMap.get(uid);
+                if (!metadata) {
+                    return;
+                }
+                userStat.email = (_a = metadata.email) !== null && _a !== void 0 ? _a : userStat.email;
+                userStat.username = (_b = metadata.username) !== null && _b !== void 0 ? _b : userStat.username;
+                userStat.displayName = (_c = metadata.displayName) !== null && _c !== void 0 ? _c : userStat.displayName;
+                if (metadata.role) {
+                    userStat.role = metadata.role;
+                }
             });
         }
-        // Update user stats with fetched user data
-        userStats.forEach((userStat, uid) => {
-            const userData = userDataMap.get(uid);
-            if (userData) {
-                userStat.email = userData.email;
-                userStat.username = userData.username;
-                userStat.role = userData.role; // Update role from users collection
-            }
+        // Create per-user statistics keyed by UID using the raw visit data
+        const buildPerUserEntry = (user) => ({
+            uid: user.uid,
+            email: user.email,
+            username: user.username,
+            displayName: user.displayName,
+            role: user.role,
+            weeklyStats: {
+                totalVisits: user.visitCount,
+                completeVisits: user.visitsByStatus.complete || 0,
+                scheduledVisits: user.visitsByStatus.scheduled || 0,
+                cancelledVisits: user.visitsByStatus.cancelled || 0,
+                visitsByQuality: user.visitsByQuality,
+                visitsByPersonMet: user.visitsByPersonMet,
+                visitsByHours: user.visitsByHours,
+                cciIds: Array.from(user.cciIds),
+                cciCount: user.cciIds.size
+            },
+            firstVisitDate: user.firstVisitDate,
+            lastVisitDate: user.lastVisitDate
         });
-        functions.logger.info(`Fetched user data for ${userDataMap.size} users`);
-        // Debug: Log sample user data to verify it's being fetched correctly
-        const sampleUserData = Array.from(userDataMap.entries()).slice(0, 3);
-        functions.logger.info('Sample user data fetched:', sampleUserData.map(([uid, data]) => ({
-            uid,
-            email: data.email,
-            username: data.username,
-            role: data.role
-        })));
-        // Create per-user statistics organized by email/username
-        const perUserStats = new Map();
-        // Process user stats into per-user format
+        const perUserStatsByUid = new Map();
         userStats.forEach((user, uid) => {
-            const userData = {
-                uid: user.uid,
-                email: user.email,
-                username: user.username,
-                role: user.role,
-                weeklyStats: {
-                    totalVisits: user.visitCount,
-                    completeVisits: user.visitsByStatus.complete || 0,
-                    scheduledVisits: user.visitsByStatus.scheduled || 0,
-                    cancelledVisits: user.visitsByStatus.cancelled || 0,
-                    visitsByQuality: user.visitsByQuality,
-                    visitsByPersonMet: user.visitsByPersonMet,
-                    visitsByHours: user.visitsByHours,
-                    cciIds: Array.from(user.cciIds),
-                    cciCount: user.cciIds.size
-                },
-                firstVisitDate: user.firstVisitDate,
-                lastVisitDate: user.lastVisitDate
-            };
-            // Create entries for email (primary identifier)
-            if (user.email) {
-                perUserStats.set(user.email, userData);
-            }
-            // Create entry for username if available and different from email
-            if (user.username && user.username !== user.email) {
-                perUserStats.set(user.username, userData);
-            }
-            // Always create an entry with UID as fallback
-            perUserStats.set(uid, userData);
+            const entry = buildPerUserEntry(user);
+            perUserStatsByUid.set(uid, entry);
         });
-        // Debug: Log the perUserStats keys to verify they're being created correctly
-        const perUserStatsKeys = Array.from(perUserStats.keys());
-        functions.logger.info(`Created perUserStats with ${perUserStatsKeys.length} keys:`, perUserStatsKeys.slice(0, 10));
+        const perUserStatsByUidKeys = Array.from(perUserStatsByUid.keys());
+        functions.logger.info(`Created perUserStatsByUid with ${perUserStatsByUidKeys.length} keys:`, perUserStatsByUidKeys.slice(0, 10));
+        const serializePerUserEntry = (entry) => ({
+            uid: entry.uid,
+            email: entry.email,
+            username: entry.username,
+            displayName: entry.displayName,
+            label: entry.username || entry.displayName || entry.email || entry.uid,
+            role: entry.role,
+            weeklyStats: entry.weeklyStats,
+            firstVisitDate: entry.firstVisitDate ? admin.firestore.Timestamp.fromDate(entry.firstVisitDate) : null,
+            lastVisitDate: entry.lastVisitDate ? admin.firestore.Timestamp.fromDate(entry.lastVisitDate) : null
+        });
+        const perUserStatsByUidForFirestore = Object.fromEntries(Array.from(perUserStatsByUid.entries()).map(([uid, entry]) => [
+            uid,
+            serializePerUserEntry(entry)
+        ]));
+        const perUserStatsListForFirestore = Array.from(perUserStatsByUid.entries())
+            .map(([uid, entry]) => {
+            var _a;
+            const label = entry.username || entry.displayName || entry.email || uid;
+            const sortKey = ((_a = label === null || label === void 0 ? void 0 : label.toLowerCase) === null || _a === void 0 ? void 0 : _a.call(label)) || uid.toLowerCase();
+            return {
+                sortKey,
+                uid,
+                label,
+                email: entry.email,
+                username: entry.username,
+                displayName: entry.displayName,
+                role: entry.role,
+                weeklyStats: entry.weeklyStats,
+                firstVisitDate: entry.firstVisitDate ? admin.firestore.Timestamp.fromDate(entry.firstVisitDate) : null,
+                lastVisitDate: entry.lastVisitDate ? admin.firestore.Timestamp.fromDate(entry.lastVisitDate) : null
+            };
+        })
+            .sort((a, b) => {
+            const compare = a.sortKey.localeCompare(b.sortKey);
+            if (compare !== 0) {
+                return compare;
+            }
+            return a.uid.localeCompare(b.uid);
+        })
+            .map((_a) => {
+            var { sortKey } = _a, rest = __rest(_a, ["sortKey"]);
+            return rest;
+        });
         // Get detailed user stats
         const userBreakdown = {
             totalUsers: uniqueUsers.size,
@@ -921,19 +968,12 @@ async function aggregateWeeklyVisitsCount(targetDate) {
                 visitor: Array.from(userStats.values()).filter(u => u.role === 'Visitor').length,
                 admin: Array.from(userStats.values()).filter(u => u.role === 'Admin').length
             },
-            // Per-user statistics organized by email/username
-            perUserStats: Object.fromEntries(Array.from(perUserStats.entries()).map(([userKey, userData]) => [
-                userKey,
-                {
-                    uid: userData.uid,
-                    email: userData.email,
-                    username: userData.username,
-                    role: userData.role,
-                    weeklyStats: userData.weeklyStats,
-                    firstVisitDate: userData.firstVisitDate ? admin.firestore.Timestamp.fromDate(userData.firstVisitDate) : null,
-                    lastVisitDate: userData.lastVisitDate ? admin.firestore.Timestamp.fromDate(userData.lastVisitDate) : null
-                }
-            ])),
+            // Per-user statistics organized by UID
+            perUserStatsByUid: perUserStatsByUidForFirestore,
+            // Legacy field retained for compatibility (uses UID keys)
+            perUserStats: perUserStatsByUidForFirestore,
+            // Sorted array for easier client rendering by username/email
+            perUserStatsList: perUserStatsListForFirestore,
             // Top users by visit count (for backward compatibility)
             topUsers: Array.from(userStats.values())
                 .sort((a, b) => b.visitCount - a.visitCount)
@@ -942,6 +982,7 @@ async function aggregateWeeklyVisitsCount(targetDate) {
                 uid: user.uid,
                 email: user.email,
                 username: user.username,
+                displayName: user.displayName,
                 role: user.role,
                 visitCount: user.visitCount,
                 visitsByStatus: user.visitsByStatus,
@@ -1013,10 +1054,11 @@ async function aggregateWeeklyVisitsCount(targetDate) {
         // Store in Firestore
         await admin.firestore().collection('insight_data').doc(`weekly_visits_count_${weekId}`).set(insightDoc);
         // Log per-user statistics summary
-        const perUserStatsSummary = Object.entries(userBreakdown.perUserStats).slice(0, 5).map(([userKey, userData]) => ({
-            userKey,
+        const perUserStatsSummary = Object.entries(userBreakdown.perUserStatsByUid || {}).slice(0, 5).map(([uid, userData]) => ({
+            uid,
             email: userData.email,
             username: userData.username,
+            displayName: userData.displayName,
             role: userData.role,
             weeklyVisits: userData.weeklyStats.totalVisits,
             completeVisits: userData.weeklyStats.completeVisits
@@ -1025,7 +1067,6 @@ async function aggregateWeeklyVisitsCount(targetDate) {
             totalVisits: counts.total,
             uniqueUsers: uniqueUsers.size,
             uniqueCcis: cciStats.size,
-            userDataFetched: userDataMap.size,
             userBreakdown: {
                 totalUsers: userBreakdown.totalUsers,
                 emUsers: userBreakdown.usersByRole.em,
@@ -1035,15 +1076,17 @@ async function aggregateWeeklyVisitsCount(targetDate) {
                     uid: userBreakdown.topUsers[0].uid,
                     email: userBreakdown.topUsers[0].email,
                     username: userBreakdown.topUsers[0].username,
+                    displayName: userBreakdown.topUsers[0].displayName,
                     visitCount: userBreakdown.topUsers[0].visitCount
                 } : null
             },
             perUserStatsSummary: perUserStatsSummary,
-            totalPerUserStats: Object.keys(userBreakdown.perUserStats).length,
-            samplePerUserStats: Object.entries(userBreakdown.perUserStats).slice(0, 3).map(([key, data]) => ({
-                userKey: key,
+            totalPerUserStats: Object.keys(userBreakdown.perUserStatsByUid || {}).length,
+            samplePerUserStats: Object.entries(userBreakdown.perUserStatsByUid || {}).slice(0, 3).map(([uid, data]) => ({
+                uid,
                 email: data.email,
                 username: data.username,
+                displayName: data.displayName,
                 role: data.role,
                 totalVisits: data.weeklyStats.totalVisits
             }))
